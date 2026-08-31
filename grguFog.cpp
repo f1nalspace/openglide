@@ -153,13 +153,30 @@ guFogGenerateExp2( GrFog_t *fogtable, float density )
     GlideMsg( "guFogGenerateExp2( ---, %-4.2f )\n", density );
 #endif
 
-    float Temp;
+    float f;
+    float scale;
+    float dp;
+
+    // The exponent is squared, not doubled -- multiplying two exp() terms
+    // yields exp( -2 * density * w ) instead of exp( -( density * w ) ^ 2 ).
+    dp = density * guFogTableIndexToW( GR_FOG_TABLE_SIZE - 1 );
+    scale = 255.0F / ( 1.0F - (float) exp( -( dp * dp ) ) );
 
     for ( int i = 0; i < GR_FOG_TABLE_SIZE; i++ )
     {
-        Temp = ( 1.0f - (float) exp( ( -density)  * guFogTableIndexToW( i ) ) * 
-               (float)exp( (-density)  * guFogTableIndexToW( i ) ) )  * 255.0f;
-        fogtable[ i ] = (FxU8) Temp;
+        dp = density * guFogTableIndexToW( i );
+        f = ( 1.0F - (float) exp( -( dp * dp ) ) ) * scale;
+
+        if ( f > 255.0F )
+        {
+            f = 255.0F;
+        }
+        else if ( f < 0.0F )
+        {
+            f = 0.0F;
+        }
+
+        fogtable[ i ] = (GrFog_t) f;
     }
 }
 
@@ -192,9 +209,16 @@ guFogGenerateLinear( GrFog_t *fogtable,
     }
 
     ZeroMemory( fogtable, GR_FOG_TABLE_SIZE );
-    for( i = Start; i <= End; i++ )
+
+    // The ramp is (i - Start) / (End - Start), not its reciprocal, and it must
+    // stop before End -- writing fogtable[ End ] overruns the table when the
+    // search above ran to GR_FOG_TABLE_SIZE.
+    if ( End > Start )
     {
-        fogtable[ i ] = (FxU8)((float)( End - Start ) / 255.0f * (float)( i - Start ));
+        for( i = Start; i < End; i++ )
+        {
+            fogtable[ i ] = (FxU8)( 255.0f * (float)( i - Start ) / (float)( End - Start ) );
+        }
     }
 
     for( i = End; i < GR_FOG_TABLE_SIZE; i++ )
