@@ -7,7 +7,8 @@
 
 static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &width, FxU32 &height)
 {
-    if ( eResolution > GR_RESOLUTION_400x300 )
+    if (( eResolution < GR_RESOLUTION_320x200 ) ||
+        ( eResolution > GR_RESOLUTION_400x300 ))
         return false;
 
     static const FxU32 windowDimensions[16][2] =
@@ -37,7 +38,8 @@ static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &w
 
 static bool InterpretScreenRefresh(GrScreenRefresh_t eRefresh, GLuint &refresh)
 {
-    if ( eRefresh > GR_REFRESH_120Hz )
+    if (( eRefresh < GR_REFRESH_60Hz ) ||
+        ( eRefresh > GR_REFRESH_120Hz ))
         return false;
 
     static const GLuint windowRefresh[9] =
