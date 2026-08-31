@@ -207,6 +207,17 @@ void RenderDrawTriangles( void )
     }
     else
     {
+        // Keyed texels carry alpha 0, but a multiply blend (e.g.
+        // GR_BLEND_ZERO/GR_BLEND_SRC_COLOR) still darkens the destination
+        // unless they are dropped here with an alpha test.
+        bool chromaKeyAlphaTest = ( Glide.State.ChromaKeyMode != 0 );
+
+        if ( chromaKeyAlphaTest )
+        {
+            glAlphaFunc( GL_GREATER, 0.0f );
+            glEnable( GL_ALPHA_TEST );
+        }
+
         if ( InternalConfig.EXT_vertex_array )
         {
             glDrawArrays( GL_TRIANGLES, 0, OGLRender.NumberOfTriangles * 3 );
@@ -247,6 +258,13 @@ void RenderDrawTriangles( void )
                 glVertex3fv( &OGLRender.TVertex[ i ].cx );
             }
             glEnd( );
+        }
+
+        if ( chromaKeyAlphaTest )
+        {
+            glDisable( GL_ALPHA_TEST );
+            // Restore the game's own alpha test (only grAlphaTestFunction sets these otherwise).
+            glAlphaFunc( OpenGL.AlphaTestFunction, OpenGL.AlphaReferenceValue );
         }
     }
   
