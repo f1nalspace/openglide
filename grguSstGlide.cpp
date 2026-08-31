@@ -5,6 +5,9 @@
 #include "PGTexture.h"
 #include "OGLTables.h"
 
+// grSstStatus() bit 6: 0 = retrace active, 1 = retrace inactive.
+static const FxU32 statusVerticalRetraceInactive = 1 << 6;
+
 static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &width, FxU32 &height)
 {
     if ( eResolution > GR_RESOLUTION_400x300 )
@@ -624,7 +627,7 @@ grSstVRetraceOn( void )
     GlideMsg( "grSstVRetraceOn( )\n" );
 #endif
 
-    return Glide.State.VRetrace;
+    return ( grSstStatus( ) & statusVerticalRetraceInactive ) == 0;
 }
 
 //*************************************************
@@ -683,9 +686,18 @@ grSstStatus( void )
 
 //    FxU32 Status = 0x0FFFF43F;
     FxU32 Status = 0x0FFFF03F;
-    
+
+    // Nothing ever clears VRetrace, so the retrace bit stayed active forever and
+    // a game polling for the retrace to end spun there. Toggle it per query.
+    static FxU32 retraceInactive = 0;
+
+    if ( Glide.State.VRetrace )
+    {
+        retraceInactive ^= 1;
+    }
+
     // Vertical Retrace
-    Status      |= ( ! Glide.State.VRetrace ) << 6;
+    Status      |= retraceInactive * statusVerticalRetraceInactive;
 
     return Status;
 // Bits
