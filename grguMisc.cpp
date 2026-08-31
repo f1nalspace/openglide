@@ -232,6 +232,89 @@ ConvertAndDownloadRle( GrChipID_t        tmu,
         tmu, startAddress, thisLod, largeLod, aspectRatio, format, evenOdd, bm_h, u0, v0, width, height,
         dest_width, dest_height );
 #endif
+
+    // A 3dfx RLE bitmap is a four byte header, one length byte per source line,
+    // then the encoded lines. Inside a line a byte above endOfLine starts a run
+    // of ( byte & runLengthMask ) palette entries and is followed by the entry,
+    // endOfLine ends the line, and any other byte is a single palette entry.
+    const FxU32 lineLengthTable = 4;
+    const FxU8  endOfLine       = 0xE0;
+    const FxU8  runLengthMask   = 0x1F;
+
+    if ( ( bm_data == NULL ) || ( tlut == NULL ) ||
+         ( dest_width == 0 ) || ( dest_height == 0 ) )
+    {
+        return;
+    }
+
+    const FxU32 decodedWidth = u0 + dest_width;
+    FxU16 *texture     = new FxU16[ dest_width * dest_height ];
+    FxU16 *decodedLine = new FxU16[ decodedWidth ];
+    FxU32 sourceLine   = 0;
+    FxU32 lineOffset   = lineLengthTable + bm_h;
+    FxU32 destLine;
+
+    memset( texture, 0, dest_width * dest_height * sizeof( FxU16 ) );
+    memset( decodedLine, 0, decodedWidth * sizeof( FxU16 ) );
+
+    for ( sourceLine = 0; sourceLine < v0; sourceLine++ )
+    {
+        lineOffset += bm_data[ lineLengthTable + sourceLine ];
+    }
+
+    for ( destLine = 0; ( destLine < height ) && ( destLine < dest_height ); destLine++ )
+    {
+        const FxU32 lineEnd = lineOffset + bm_data[ lineLengthTable + sourceLine ];
+        FxU32 readPos  = lineOffset;
+        FxU32 writePos = 0;
+
+        while ( ( readPos < lineEnd ) && ( bm_data[ readPos ] != endOfLine ) )
+        {
+            const FxU8 token = bm_data[ readPos ];
+
+            if ( token > endOfLine )
+            {
+                const FxU32 runLength = token & runLengthMask;
+                const FxU16 color     = tlut[ bm_data[ readPos + 1 ] ];
+
+                for ( FxU32 run = 0; ( run < runLength ) && ( writePos < decodedWidth ); run++ )
+                {
+                    decodedLine[ writePos++ ] = color;
+                }
+                readPos += 2;
+            }
+            else
+            {
+                if ( writePos < decodedWidth )
+                {
+                    decodedLine[ writePos++ ] = tlut[ token ];
+                }
+                readPos++;
+            }
+        }
+
+        memcpy( texture + ( destLine * dest_width ), decodedLine + u0, dest_width * sizeof( FxU16 ) );
+
+        lineOffset += bm_data[ lineLengthTable + sourceLine ];
+        sourceLine++;
+    }
+
+    // The source bitmap can be one line short of the destination texture.
+    for ( ; destLine < dest_height; destLine++ )
+    {
+        memcpy( texture + ( destLine * dest_width ), decodedLine + u0, dest_width * sizeof( FxU16 ) );
+    }
+
+    GrTexInfo info;
+    info.smallLod    = thisLod;
+    info.largeLod    = largeLod;
+    info.aspectRatio = aspectRatio;
+    info.format      = format;
+    info.data        = texture;
+    grTexDownloadMipMap( tmu, startAddress, evenOdd, &info );
+
+    delete[] decodedLine;
+    delete[] texture;
 }
 
 //*************************************************
