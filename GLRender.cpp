@@ -63,6 +63,16 @@ static float            hAspect,
 // Functions definitions
 //**************************************************************
 
+// An oow of zero means an infinitely distant vertex, and a near-zero oow puts
+// 1/oow past the end of the table -- both make the cast to FxU16 undefined.
+static FxU16 FogTableIndex( float oow )
+{
+    const float lastEntry = (float)( OPENGLFOGTABLESIZE - 1 );
+    const float w = ( oow > 0.0f ) ? ( 1.0f / oow ) : lastEntry;
+
+    return ( w >= lastEntry ) ? (FxU16)lastEntry : (FxU16)w;
+}
+
 // Initializes the render and allocates memory
 void RenderInitialize( void )
 {
@@ -630,9 +640,9 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
         if ( Glide.State.FogMode == GR_FOG_WITH_TABLE )
 //        if ( Glide.State.FogMode & GR_FOG_WITH_TABLE )
         {
-            pF->af = (float)OpenGL.FogTable[ (FxU16)(1.0f / a->oow) ] * D1OVER255;
-            pF->bf = (float)OpenGL.FogTable[ (FxU16)(1.0f / b->oow) ] * D1OVER255;
-            pF->cf = (float)OpenGL.FogTable[ (FxU16)(1.0f / c->oow) ] * D1OVER255;
+            pF->af = (float)OpenGL.FogTable[ FogTableIndex( a->oow ) ] * D1OVER255;
+            pF->bf = (float)OpenGL.FogTable[ FogTableIndex( b->oow ) ] * D1OVER255;
+            pF->cf = (float)OpenGL.FogTable[ FogTableIndex( c->oow ) ] * D1OVER255;
         }
         else
         {
@@ -1101,8 +1111,8 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
 
     if ( InternalConfig.FogEnable )
     {
-        pF->af = (float)OpenGL.FogTable[ (FxU16)(1.0f / a->oow) ] * D1OVER255;
-        pF->bf = (float)OpenGL.FogTable[ (FxU16)(1.0f / b->oow) ] * D1OVER255;
+        pF->af = (float)OpenGL.FogTable[ FogTableIndex( a->oow ) ] * D1OVER255;
+        pF->bf = (float)OpenGL.FogTable[ FogTableIndex( b->oow ) ] * D1OVER255;
 
     #ifdef OGL_DEBUG
         DEBUG_MIN_MAX( pF->af, OGLRender.MaxF, OGLRender.MinF );
@@ -1488,7 +1498,7 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
 
     if( InternalConfig.FogEnable )
     {
-        pF->af = (float)OpenGL.FogTable[ (FxU16)(1.0f / a->oow) ] * D1OVER255;
+        pF->af = (float)OpenGL.FogTable[ FogTableIndex( a->oow ) ] * D1OVER255;
 
     #ifdef OGL_DEBUG
         DEBUG_MIN_MAX( pF->af, OGLRender.MaxF, OGLRender.MinF );
