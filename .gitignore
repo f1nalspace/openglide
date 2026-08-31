@@ -1,6 +1,9 @@
 # Vim swap files
 .*.swp
 
+# Backup files autoconf/autoheader leave behind when regenerating in place
+*~
+
 # Autotools/libtool files
 .deps/
 .libs/
@@ -22,6 +25,9 @@ autom4te.cache
 Makefile
 Makefile.in
 /stamp-h1
+
+# Out-of-tree build directory used for the host build (see docs/anleitung.md 4.3)
+/build/
 
 # Compiled Object files
 *.slo
