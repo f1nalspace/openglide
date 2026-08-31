@@ -5,7 +5,7 @@
 //*                     Render Header
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -113,6 +113,9 @@ extern RenderStruct		    OGLRender;
 extern ALPHAFACTORFUNCPROC  AlphaFactorFunc;
 extern COLORFACTORFUNCPROC  ColorFactor3Func;
 extern COLORFUNCTIONPROC    ColorFunctionFunc;
+
+// Fog with W distance
+float OGLFogDistance(const float);
 
 // Prototypes for the color combining
 float AlphaFactorZero( float LocalAlpha, float OtherAlpha );

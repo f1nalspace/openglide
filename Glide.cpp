@@ -5,7 +5,7 @@
 //*                         Main File
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -13,7 +13,7 @@
 #include <stdio.h>
 
 #include "GlOgl.h"
-#include "Glextensions.h"
+#include "GLExtensions.h"
 #include "PGTexture.h"
 #include "PGUTexture.h"
 
@@ -94,7 +94,6 @@ bool InitWindow( FxU hWnd )
     GlideMsg( "Wrap 565 to 5551 = %s\n", InternalConfig.Wrap565to5551 ? "true" : "false" );
     GlideMsg( "Texture Memory Size = %d Mb\n", InternalConfig.TextureMemorySize );
     GlideMsg( "Frame Buffer Memory Size = %d Mb\n", InternalConfig.FrameBufferMemorySize );
-    GlideMsg( "MMX is %s\n", InternalConfig.MMXEnable ? "present" : "not present" );
     GlideMsg( OGL_LOG_SEPARATE );
 
 #ifdef OGL_DEBUG
@@ -124,7 +123,7 @@ void InitOpenGL( void )
     glMatrixMode( GL_PROJECTION );
     glLoadIdentity( );
     glOrtho( 0, Glide.WindowWidth, 0, Glide.WindowHeight, OpenGL.ZNear, OpenGL.ZFar );
-    glViewport( 0, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
+    glViewport( OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
 
     glMatrixMode( GL_MODELVIEW );
     glLoadIdentity( );

@@ -5,7 +5,7 @@
 //*           Windows specific includes and macros
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -17,12 +17,13 @@
 #include <windows.h>
 #include <io.h>
 
+#if !defined(FASTCALL)
+#define FASTCALL __fastcall
+#endif
 #define max(x,y) ((x) < (y) ? (y) : (x))
 
-#define FASTCALL __fastcall
-
 #define VARARGDECL(t) t _cdecl
-typedef int (__stdcall *ExtFn)();
+typedef intptr_t (__stdcall *ExtFn)();
 
 #ifdef _MSC_VER
 typedef __int64  FxI64;
@@ -30,6 +31,8 @@ typedef unsigned __int64 FxU64;
 typedef int FxI;
 typedef unsigned int FxU;
 #endif
+
+int getpagesize(void);
 
 #endif
 

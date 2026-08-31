@@ -5,16 +5,207 @@
 //*           implementation of the PGTexture class
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
 
 #include "GlOgl.h"
 #include "PGTexture.h"
-#include "Glextensions.h"
+#include "GLExtensions.h"
 #include "FormatConversion.h"
 #include "OGLTables.h"
+
+#include <stdlib.h>
+#include <stdarg.h>
+
+//**************************************************************
+//* Diagnostics: which texture formats, palettes and pipeline
+//* states does a game actually use?
+//*
+//* Switched on with QEMU_3DFX_TEXLOG=1, writes OpenGLid.tex. Only
+//* distinct records are kept, each with the number of times it was
+//* seen, and the file is rewritten whenever a new one shows up --
+//* so the findings survive a game that crashes.
+//**************************************************************
+
+#define TEXDIAG_FILE        "OpenGLid.tex"
+#define TEXDIAG_MAX_RECORDS 192
+#define TEXDIAG_MAX_LENGTH  256
+
+static bool  texdiag_enabled_known = false;
+static bool  texdiag_enabled       = false;
+static char  texdiag_record[ TEXDIAG_MAX_RECORDS ][ TEXDIAG_MAX_LENGTH ];
+static FxU32 texdiag_count[ TEXDIAG_MAX_RECORDS ];
+static int   texdiag_records       = 0;
+
+// Probe: with QEMU_3DFX_KEYMARK=1 the chroma-keyed palette entries do not become
+// transparent but opaque magenta. Whatever turns magenta on screen was keyed out
+// by the palette -- everything that stays as it was comes from somewhere else.
+static bool texdiag_keymark_known = false;
+static bool texdiag_keymark       = false;
+
+static bool TexDiagKeyMark( void )
+{
+    if ( ! texdiag_keymark_known )
+    {
+        const char * setting = getenv( "QEMU_3DFX_KEYMARK" );
+
+        texdiag_keymark = ( setting != NULL ) && ( setting[ 0 ] != '0' );
+        texdiag_keymark_known = true;
+    }
+
+    return texdiag_keymark;
+}
+
+static bool TexDiagEnabled( void )
+{
+    if ( ! texdiag_enabled_known )
+    {
+        const char * setting = getenv( "QEMU_3DFX_TEXLOG" );
+
+        texdiag_enabled = ( setting != NULL ) && ( setting[ 0 ] != '0' );
+        texdiag_enabled_known = true;
+    }
+
+    return texdiag_enabled;
+}
+
+static void TexDiagWriteFile( void )
+{
+    FILE * file = fopen( TEXDIAG_FILE, "w" );
+    int    index;
+
+    if ( file == NULL )
+    {
+        return;
+    }
+
+    fprintf( file, "OpenGLide texture diagnostics -- %d distinct records\n\n", texdiag_records );
+    for ( index = 0; index < texdiag_records; index++ )
+    {
+        fprintf( file, "%8u x  %s\n", texdiag_count[ index ], texdiag_record[ index ] );
+    }
+    fclose( file );
+}
+
+static int texdiag_palettes_written = 0;
+
+// The first few palettes go into OpenGLid.pal in full. Without that there is no
+// way to tell whether the chroma key colour is in the palette at all.
+static void TexDiagPalette( GrTexTable_t type, const FxU32 * data, int first, int count )
+{
+    const int maximum_palettes = 4;
+
+    FILE * file;
+    int    entry;
+
+    if ( ! TexDiagEnabled( ) || ( type != GR_TEXTABLE_PALETTE ) )
+    {
+        return;
+    }
+    if ( texdiag_palettes_written >= maximum_palettes )
+    {
+        return;
+    }
+
+    file = fopen( "OpenGLid.pal", ( texdiag_palettes_written == 0 ) ? "w" : "at" );
+    if ( file == NULL )
+    {
+        return;
+    }
+
+    fprintf( file, "palette %d: first=%d count=%d\n", texdiag_palettes_written, first, count );
+    for ( entry = 0; entry < count; entry++ )
+    {
+        fprintf( file, "%3d 0x%08x%s", first + entry, (unsigned)data[ entry ],
+                 ( ( entry % 4 ) == 3 ) ? "\n" : "  " );
+    }
+    fprintf( file, "\n\n" );
+    fclose( file );
+
+    texdiag_palettes_written++;
+}
+
+// Writes the palettized texture that is about to be uploaded as a PPM, one file
+// per size, always the most recent one. Texels the chroma key removes come out
+// magenta, so it is visible at a glance what should have been transparent.
+static void TexDiagTexturePPM( int width, int height, const FxU8 * data, const FxU32 * palette )
+{
+    char   name[ 64 ];
+    FILE * file;
+    int    x, y;
+
+    if ( ! TexDiagEnabled( ) )
+    {
+        return;
+    }
+
+    sprintf( name, "OpenGLid-%dx%d.ppm", width, height );
+    file = fopen( name, "wb" );
+    if ( file == NULL )
+    {
+        return;
+    }
+
+    fprintf( file, "P6\n%d %d\n255\n", width, height );
+    for ( y = 0; y < height; y++ )
+    {
+        for ( x = 0; x < width; x++ )
+        {
+            FxU32 colour = palette[ data[ y * width + x ] ];
+            FxU8  pixel[ 3 ];
+
+            if ( ( colour & 0xff000000 ) == 0 )
+            {
+                pixel[ 0 ] = 255; pixel[ 1 ] = 0; pixel[ 2 ] = 255;
+            }
+            else
+            {
+                pixel[ 0 ] = (FxU8)( ( colour >> 16 ) & 0xff );
+                pixel[ 1 ] = (FxU8)( ( colour >>  8 ) & 0xff );
+                pixel[ 2 ] = (FxU8)(   colour         & 0xff );
+            }
+            fwrite( pixel, 1, 3, file );
+        }
+    }
+    fclose( file );
+}
+
+static void TexDiagNote( const char * format, ... )
+{
+    char    line[ TEXDIAG_MAX_LENGTH ];
+    va_list arguments;
+    int     index;
+
+    if ( ! TexDiagEnabled( ) )
+    {
+        return;
+    }
+
+    va_start( arguments, format );
+    vsnprintf( line, sizeof( line ), format, arguments );
+    va_end( arguments );
+
+    for ( index = 0; index < texdiag_records; index++ )
+    {
+        if ( strcmp( texdiag_record[ index ], line ) == 0 )
+        {
+            texdiag_count[ index ]++;
+            return;
+        }
+    }
+
+    if ( texdiag_records >= TEXDIAG_MAX_RECORDS )
+    {
+        return;
+    }
+
+    strcpy( texdiag_record[ texdiag_records ], line );
+    texdiag_count[ texdiag_records ] = 1;
+    texdiag_records++;
+    TexDiagWriteFile( );
+}
 
 #define OGL_LOAD_CREATE_TEXTURE( compnum, compformat, comptype, texdata )   \
     {                                                                       \
@@ -217,6 +408,12 @@ void PGTexture::Source( FxU32 startAddress, FxU32 evenOdd, GrTexInfo *info )
 
 void PGTexture::DownloadTable( GrTexTable_t type, FxU32 *data, int first, int count )
 {
+    TexDiagNote( "TABLE type=%d first=%d count=%d data[0]=0x%08x data[1]=0x%08x data[%d]=0x%08x",
+                 (int)type, first, count,
+                 (unsigned)data[ 0 ], (unsigned)data[ ( count > 1 ) ? 1 : 0 ],
+                 count - 1, (unsigned)data[ count - 1 ] );
+    TexDiagPalette( type, data, first, count );
+
     if ( type == GR_TEXTABLE_PALETTE )
     {
         for ( int i = count - 1; i >= 0; i-- )
@@ -286,7 +483,58 @@ bool PGTexture::MakeReady( void )
     size             = TextureMemRequired( m_evenOdd, &m_info );
 
     GetTexValues( &texVals );
-    
+
+    if ( TexDiagEnabled( ) )
+    {
+        // How often does the chroma key actually hit the palette -- compared at
+        // full 24 bit, the way OpenGLide does it, and at the 5:6:5 of the frame
+        // buffer, the way a Voodoo does it?
+        FxU32 matches888 = 0;
+        FxU32 matches565 = 0;
+        int   firstMatchIndex = -1;
+        FxU32 firstMatchColour = 0;
+        int   entry;
+
+        for ( entry = 0; entry < 256; entry++ )
+        {
+            FxU32 colour    = m_palette[ entry ] & 0x00ffffff;
+            FxU16 colour565 = (FxU16)( ( colour & 0x00F80000 ) >> 8 |
+                                       ( colour & 0x0000FC00 ) >> 5 |
+                                       ( colour & 0x000000F8 ) >> 3 );
+
+            if ( colour == m_chromakey_value_8888 )
+            {
+                matches888++;
+            }
+            if ( colour565 == m_chromakey_value_565 )
+            {
+                matches565++;
+                if ( firstMatchIndex < 0 )
+                {
+                    firstMatchIndex  = entry;
+                    firstMatchColour = colour;
+                }
+            }
+        }
+
+        TexDiagNote( "TEX fmt=0x%02x %dx%d chroma=%d key=0x%06x/0x%04x cfmt=%d blend=%d sf=%d df=%d "
+                     "acomb(fn=%d,fac=%d,loc=%d,oth=%d) ccomb(fn=%d,fac=%d,loc=%d,oth=%d) "
+                     "pal[0]=0x%08x hit888=%u hit565=%u first=%d/0x%06x raw=0x%08x const=0x%08x",
+                     (unsigned)m_info.format, (int)texVals.width, (int)texVals.height,
+                     (int)m_chromakey_mode, (unsigned)m_chromakey_value_8888,
+                     (unsigned)m_chromakey_value_565, (int)Glide.State.ColorFormat,
+                     OpenGL.Blend ? 1 : 0,
+                     (int)Glide.State.AlphaBlendRgbSf, (int)Glide.State.AlphaBlendRgbDf,
+                     (int)Glide.State.AlphaFunction, (int)Glide.State.AlphaFactor,
+                     (int)Glide.State.AlphaLocal, (int)Glide.State.AlphaOther,
+                     (int)Glide.State.ColorCombineFunction, (int)Glide.State.ColorCombineFactor,
+                     (int)Glide.State.ColorCombineLocal, (int)Glide.State.ColorCombineOther,
+                     (unsigned)m_palette[ 0 ], (unsigned)matches888, (unsigned)matches565,
+                     firstMatchIndex, (unsigned)firstMatchColour,
+                     (unsigned)Glide.State.ChromakeyValue,
+                     (unsigned)Glide.State.ConstantColorValue );
+    }
+
     switch ( m_info.format )
     {
     case GR_TEXFMT_P_8:
@@ -440,6 +688,7 @@ bool PGTexture::MakeReady( void )
             break;
             
         case GR_TEXFMT_P_8:
+            TexDiagTexturePPM( texVals.width, texVals.height, data, m_palette );
             if ( InternalConfig.EXT_paletted_texture )
             {
                 p_glColorTableEXT( GL_TEXTURE_2D, GL_RGBA, 256, GL_BGRA_EXT, GL_UNSIGNED_BYTE, m_palette );
@@ -662,7 +911,7 @@ void PGTexture::ApplyKeyToPalette( void )
             if ( ( m_chromakey_mode ) && 
                  ( ( m_palette[i] & 0x00ffffff ) == m_chromakey_value_8888 ) )
             {
-                m_palette[i] &= 0x00ffffff;
+                m_palette[i] = TexDiagKeyMark( ) ? 0xffff00ff : ( m_palette[i] & 0x00ffffff );
             }
             else
             {

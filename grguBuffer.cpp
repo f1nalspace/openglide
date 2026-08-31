@@ -5,7 +5,7 @@
 //*                    Buffer functions
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -59,16 +59,22 @@ grBufferClear( GrColor_t color, GrAlpha_t alpha, FxU16 depth )
         Bits |= GL_DEPTH_BUFFER_BIT;
     }
 
-	if ( ! OpenGL.Clipping )
-	{
-	    glClear( Bits );
-	}
-	else
-	{
-		glEnable( GL_SCISSOR_TEST );
-		glClear( Bits );
-		glDisable( GL_SCISSOR_TEST );
-	}
+    if ( ! OpenGL.Clipping )
+    {
+        if ( OpenGL.WindowOffset ) {
+            glScissor(OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight);
+            glEnable( GL_SCISSOR_TEST );
+        }
+        glClear( Bits );
+        if ( OpenGL.WindowOffset )
+            glDisable( GL_SCISSOR_TEST );
+    }
+    else
+    {
+            glEnable( GL_SCISSOR_TEST );
+            glClear( Bits );
+            glDisable( GL_SCISSOR_TEST );
+    }
 
 #ifdef OPENGL_DEBUG
     GLErro( "grBufferClear" );
@@ -85,6 +91,7 @@ grBufferSwap( int swap_interval )
     GlideMsg( "grBufferSwap( %d )\n", swap_interval );
 #endif
 
+    SetSwapInterval( swap_interval & 0x03 );
     RenderDrawTriangles( );
     glFlush( );
 
@@ -97,6 +104,14 @@ grBufferSwap( int swap_interval )
     }
     OGLRender.FrameTriangles = 0;
 #endif
+
+    if (Glide.DstBuffer.Lock)
+    {
+	grLfbUnlock(Glide.DstBuffer.Type, Glide.DstBuffer.Buffer);
+	Glide.DstBuffer.Lock = true;
+    }
+
+    annotate_stat();
 
     SwapBuffers( );
 

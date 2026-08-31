@@ -14,8 +14,11 @@
 ** successor clauses in the FAR, DOD or NASA FAR Supplement. Unpublished -
 ** rights reserved under the Copyright Laws of the United States.
 **
-** $Header$
-** $Log$
+** $Header: /cvsroot/openglide/openglide/sdk2_sst1vid.h,v 1.1 2002/12/05 13:50:21 fbarros Exp $
+** $Log: sdk2_sst1vid.h,v $
+** Revision 1.1  2002/12/05 13:50:21  fbarros
+** 3dfx sdk 2 header file
+**
 ** Revision 1.1.1.1  2001/06/25 18:00:49  paul
 ** v006 from sourceforge
 **

@@ -7,7 +7,8 @@
 
 static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &width, FxU32 &height)
 {
-    if ( eResolution > GR_RESOLUTION_400x300 )
+    if (( eResolution < GR_RESOLUTION_320x200 ) ||
+        ( eResolution > GR_RESOLUTION_400x300 ))
         return false;
 
     static const FxU32 windowDimensions[16][2] =
@@ -38,7 +39,7 @@ static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &w
 static bool InterpretScreenRefresh(GrScreenRefresh_t eRefresh, GLuint &refresh)
 {
     if ( eRefresh > GR_REFRESH_120Hz )
-        return false;
+        eRefresh = 0;
 
     static const GLuint windowRefresh[9] =
     {
@@ -192,8 +193,9 @@ grGlideSetState( const GrState *state )
                   StateTemp.TextureCombineRGBInvert, StateTemp.TextureCombineAInvert );
     grAlphaBlendFunction( StateTemp.AlphaBlendRgbSf, StateTemp.AlphaBlendRgbDf, StateTemp.AlphaBlendAlphaSf, StateTemp.AlphaBlendAlphaDf );
     grClipWindow( StateTemp.ClipMinX, StateTemp.ClipMinY, StateTemp.ClipMaxX, StateTemp.ClipMaxY );
-//  grSstOrigin( StateTemp.OriginInformation );
-//  grTexSource( GR_TMU0, StateTemp.TexSource.StartAddress, StateTemp.TexSource.EvenOdd, &StateTemp.TexSource.Info );
+    grSstOrigin( StateTemp.OriginInformation );
+    grTexSource( GR_TMU0, StateTemp.TexSource.StartAddress, StateTemp.TexSource.EvenOdd, &StateTemp.TexSource.Info );
+    grTexLodBiasValue(GR_TMU0, StateTemp.LodBias);
 }
 
 //*************************************************
@@ -221,7 +223,7 @@ grGlideShamelessPlug( const FxBool on )
 }
 
 //*************************************************
-//* Returns the number of Voodoo Boards Installed
+//* Returns the number of Voodoo Boards Instaled
 //*************************************************
 FX_ENTRY FxBool FX_CALL
 grSstQueryBoards( GrHwConfiguration *hwConfig )
@@ -272,11 +274,15 @@ grSstWinOpen(   FxU hwnd,
         return FXFALSE;
     }
 
+    InternalConfig.Resolution = UserConfig.Resolution;
     // Set the size of the OpenGL window (might be different from Glide window size)
+    if ((UserConfig.Resolution > 16) &&
+        (Glide.WindowWidth >= UserConfig.Resolution))
+        UserConfig.Resolution = 0;
     if (UserConfig.Resolution == 0)
     {
         // Use the resolution requested by the game
-        OpenGL.WindowWidth = Glide.WindowWidth;
+        OpenGL.WindowWidth  = Glide.WindowWidth;
         OpenGL.WindowHeight = Glide.WindowHeight;
     }
     else if (UserConfig.Resolution <= 16)
@@ -289,8 +295,9 @@ grSstWinOpen(   FxU hwnd,
     {
         // override the resolution
         OpenGL.WindowWidth = UserConfig.Resolution;
-        // Glide games have a fixed 4/3 aspect ratio
-        OpenGL.WindowHeight = UserConfig.Resolution * 3 / 4;
+        // calculate Glide height / width ratio
+        float r = ((float)Glide.WindowHeight) / Glide.WindowWidth;
+        OpenGL.WindowHeight = OpenGL.WindowWidth * r;
     }
 
     Glide.WindowTotalPixels = Glide.WindowWidth * Glide.WindowHeight;
@@ -306,6 +313,8 @@ grSstWinOpen(   FxU hwnd,
     OpenGL.ClipMinY = 0;
     OpenGL.ClipMaxX = OpenGL.WindowWidth;
     OpenGL.ClipMaxY = OpenGL.WindowHeight;
+    OpenGL.ClipMinX += OpenGL.WindowOffset;
+    OpenGL.ClipMaxX += OpenGL.WindowOffset;
     OpenGL.WindowTotalPixels = (FxU32)( OpenGL.WindowWidth * OpenGL.WindowHeight );
 
     Glide.State.ColorFormat = cformat;
@@ -315,9 +324,14 @@ grSstWinOpen(   FxU hwnd,
     // Initializing Glide and OpenGL
     InitOpenGL( );
 
-    OpenGL.tmpBuf = new FxU32[ OpenGL.WindowTotalPixels ];
-    Glide.SrcBuffer.Address = new FxU16[ Glide.WindowTotalPixels ];
-    Glide.DstBuffer.Address = new FxU16[ Glide.WindowTotalPixels ];
+#define PADDING         ((page_size << 2) - 1)
+#define PAGE_ALIGN(x)   ((((intptr_t)x) + page_size - 1) & page_mask)
+    intptr_t page_size = getpagesize();
+    intptr_t page_mask = ~(page_size - 1);
+    OpenGL.oneBuf = new char[ (OpenGL.WindowTotalPixels * 10) + PADDING ];
+    OpenGL.tmpBuf = (FxU32 *)PAGE_ALIGN(OpenGL.oneBuf);
+    Glide.DstBuffer.Address = (FxU16 *)PAGE_ALIGN(OpenGL.tmpBuf + (OpenGL.WindowTotalPixels << 2));
+    Glide.SrcBuffer.Address = (FxU16 *)PAGE_ALIGN(Glide.DstBuffer.Address + (OpenGL.WindowTotalPixels << 2));
     Glide.LFBTextureSize = 2 << int_log2(Glide.WindowWidth > Glide.WindowHeight ? (Glide.WindowWidth-1) : (Glide.WindowHeight-1));
 
     glGenTextures( 1, &Glide.LFBTexture );
@@ -326,8 +340,8 @@ grSstWinOpen(   FxU hwnd,
         glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
         glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
     } else {
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
     }
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
@@ -344,7 +358,7 @@ grSstWinOpen(   FxU hwnd,
     ZeroMemory( Glide.SrcBuffer.Address, Glide.WindowTotalPixels * 2 );
 
 #define BLUE_SCREEN     (0x07FF)
-    for( FxU32 i = 0; i < Glide.WindowTotalPixels; i++ )
+    for( FxU32 i = 0; i < (Glide.WindowTotalPixels << 1); i++ )
     {
         Glide.DstBuffer.Address[i] = BLUE_SCREEN;
     }
@@ -437,7 +451,11 @@ grSstWinClose( void )
         return;
     }
 
+    UserConfig.Resolution = InternalConfig.Resolution;
+    OpenGL.WindowOffset = 0;
     OpenGL.WinOpen = false;
+
+    annotate_last();
 
 #ifdef OGL_DEBUG
     GlideMsg( OGL_LOG_SEPARATE );
@@ -477,12 +495,10 @@ grSstWinClose( void )
 
     Textures->Clear( );
 
-    FinaliseOpenGLWindow( );
-
     glDeleteTextures(1, &Glide.LFBTexture);
-    delete[] Glide.SrcBuffer.Address;
-    delete[] Glide.DstBuffer.Address;
-    delete[] OpenGL.tmpBuf;
+    delete[] OpenGL.oneBuf;
+
+    FinaliseOpenGLWindow( );
 }
 
 //*************************************************
@@ -568,7 +584,7 @@ grSstOrigin( GrOriginLocation_t  origin )
         glMatrixMode( GL_PROJECTION );
         glLoadIdentity( );
         glOrtho( 0, Glide.WindowWidth, 0, Glide.WindowHeight, OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( 0, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
+        glViewport( OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
         glMatrixMode( GL_MODELVIEW );
         break;
 
@@ -576,7 +592,7 @@ grSstOrigin( GrOriginLocation_t  origin )
         glMatrixMode( GL_PROJECTION );
         glLoadIdentity( );
         glOrtho( 0, Glide.WindowWidth, Glide.WindowHeight, 0, OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( 0, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
+        glViewport( OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
         glMatrixMode( GL_MODELVIEW );
         break;
     }
@@ -606,6 +622,15 @@ grSstResetPerfStats( void )
 }
 
 //*************************************************
+FX_ENTRY void FX_CALL
+grSstVidMode(FxU32 whichSst, void* vidTimings)
+{
+#ifdef OGL_NOTDONE
+    GlideMsg( "grSstVidMode( )\n" );
+#endif
+}
+
+//*************************************************
 FX_ENTRY FxU32 FX_CALL 
 grSstVideoLine( void )
 {
@@ -624,7 +649,7 @@ grSstVRetraceOn( void )
     GlideMsg( "grSstVRetraceOn( )\n" );
 #endif
 
-    return Glide.State.VRetrace;
+    return ((grSstStatus() & (1 << 6)) == 0);
 }
 
 //*************************************************
@@ -681,11 +706,12 @@ grSstStatus( void )
     GlideMsg( "grSstStatus( )\n" );
 #endif
 
-//    FxU32 Status = 0x0FFFF43F;
+    static int retrace;
     FxU32 Status = 0x0FFFF03F;
+    retrace ^= Glide.State.VRetrace;
     
     // Vertical Retrace
-    Status      |= ( ! Glide.State.VRetrace ) << 6;
+    Status      |= (retrace << 6);
 
     return Status;
 // Bits

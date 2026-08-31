@@ -5,7 +5,7 @@
 //*                 OpenGL Extensions Header
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -13,7 +13,9 @@
 #ifndef __GLEXTENSIONS__
 #define __GLEXTENSIONS__
 
-#ifndef GL_GLEXT_VERSION
+#ifdef C_USE_SDL
+#include "SDL_opengl_glext.h"
+#else
 #include <GL/glext.h>
 #endif
 
@@ -21,7 +23,7 @@ void ValidateUserConfig();
 
 // Extensions Functions Declarations
 // This cannot have the same name as the prototype functions
-// in glext.h, else compiler complains about object being
+// in glext.h, else compiler compiains about object being
 // redeclared as different type of symbol (func->variable).
 extern PFNGLCLIENTACTIVETEXTUREARBPROC          p_glClientActiveTexture;
 extern PFNGLMULTITEXCOORD4FARBPROC              p_glMultiTexCoord4fARB;

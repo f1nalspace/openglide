@@ -5,14 +5,14 @@
 //*                     Render File
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
 
 #include "GlOgl.h"
 #include "GLRender.h"
-#include "Glextensions.h"
+#include "GLExtensions.h"
 #include "PGTexture.h"
 
 //**************************************************************
@@ -43,18 +43,25 @@ static const float vertex_snap = float( 3L << 18 );
 // Standard structs for the render
 RenderStruct OGLRender;
 
-// Variables for the Add functions
+// Varibles for the Add functions
 static TColorStruct     Local, 
                         Other, 
                         CFactor;
+static float            AFactor[3];
 static TColorStruct     *pC,
                         *pC2;
 static TVertexStruct    *pV;
 static TTextureStruct   *pTS;
 static TFogStruct       *pF;
+static void             *pt1, 
+                        *pt2, 
+                        *pt3;
 static float            atmuoow;
 static float            btmuoow;
 static float            ctmuoow;
+static float            aoow, 
+                        boow, 
+                        coow;
 static float            hAspect, 
                         wAspect,
                         maxoow;
@@ -63,7 +70,7 @@ static float            hAspect,
 // Functions definitions
 //**************************************************************
 
-// Initializes the render and allocates memory
+// Intializes the render and allocates memory
 void RenderInitialize( void )
 {
     OGLRender.NumberOfTriangles = 0;
@@ -207,6 +214,21 @@ void RenderDrawTriangles( void )
     }
     else
     {
+        // The chroma key has to hold even while blending is on. On a Voodoo the
+        // keyed texel never reaches the blending unit at all; here it is marked
+        // with alpha 0 in the palette, so an alpha test has to drop it. Without
+        // this it only worked for GR_BLEND_ONE/GR_BLEND_ZERO -- and Diablo II
+        // draws its menu text with GR_BLEND_ZERO/GR_BLEND_SRC_COLOR, a multiply
+        // in which a black texel with alpha 0 blackens the pixel underneath.
+        // That was the black box behind the button text. See docs/LOG.md.
+        bool chromaKeyAlphaTest = ( Glide.State.ChromaKeyMode != 0 );
+
+        if ( chromaKeyAlphaTest )
+        {
+            glAlphaFunc( GL_GREATER, 0.0f );
+            glEnable( GL_ALPHA_TEST );
+        }
+
         if ( InternalConfig.EXT_vertex_array )
         {
             glDrawArrays( GL_TRIANGLES, 0, OGLRender.NumberOfTriangles * 3 );
@@ -248,6 +270,14 @@ void RenderDrawTriangles( void )
             }
             glEnd( );
         }
+
+        if ( chromaKeyAlphaTest )
+        {
+            glDisable( GL_ALPHA_TEST );
+            // grAlphaTestFunction is the only other place that sets these, so
+            // the game's own alpha test has to be put back by hand.
+            glAlphaFunc( OpenGL.AlphaTestFunction, OpenGL.AlphaReferenceValue );
+        }
     }
   
     if ( ! InternalConfig.EXT_secondary_color )
@@ -267,7 +297,7 @@ void RenderDrawTriangles( void )
 
         glEnable( GL_POLYGON_OFFSET_FILL );
 
-        if ( 0 && InternalConfig.EXT_vertex_array ) // ????
+        if ( InternalConfig.EXT_vertex_array )
         {
             glColorPointer( 4, GL_FLOAT, 0, &OGLRender.TColor2 );
             glDrawArrays( GL_TRIANGLES, 0, OGLRender.NumberOfTriangles * 3 );
@@ -630,9 +660,9 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
         if ( Glide.State.FogMode == GR_FOG_WITH_TABLE )
 //        if ( Glide.State.FogMode & GR_FOG_WITH_TABLE )
         {
-            pF->af = (float)OpenGL.FogTable[ (FxU16)(1.0f / a->oow) ] * D1OVER255;
-            pF->bf = (float)OpenGL.FogTable[ (FxU16)(1.0f / b->oow) ] * D1OVER255;
-            pF->cf = (float)OpenGL.FogTable[ (FxU16)(1.0f / c->oow) ] * D1OVER255;
+            pF->af = OGLFogDistance( (a->oow)? (1.f / a->oow):65535.f );
+            pF->bf = OGLFogDistance( (b->oow)? (1.f / b->oow):65535.f );
+            pF->cf = OGLFogDistance( (c->oow)? (1.f / c->oow):65535.f );
         }
         else
         {
@@ -1101,8 +1131,8 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
 
     if ( InternalConfig.FogEnable )
     {
-        pF->af = (float)OpenGL.FogTable[ (FxU16)(1.0f / a->oow) ] * D1OVER255;
-        pF->bf = (float)OpenGL.FogTable[ (FxU16)(1.0f / b->oow) ] * D1OVER255;
+        pF->af = OGLFogDistance( (a->oow)? (1.f / a->oow):65535.f );
+        pF->bf = OGLFogDistance( (b->oow)? (1.f / b->oow):65535.f );
 
     #ifdef OGL_DEBUG
         DEBUG_MIN_MAX( pF->af, OGLRender.MaxF, OGLRender.MinF );
@@ -1488,7 +1518,7 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
 
     if( InternalConfig.FogEnable )
     {
-        pF->af = (float)OpenGL.FogTable[ (FxU16)(1.0f / a->oow) ] * D1OVER255;
+        pF->af = OGLFogDistance( (a->oow)? (1.f / a->oow):65535.f );
 
     #ifdef OGL_DEBUG
         DEBUG_MIN_MAX( pF->af, OGLRender.MaxF, OGLRender.MinF );

@@ -5,14 +5,14 @@
 //*                  Glide Texture Functions
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
 
 #include "GlOgl.h"
 #include "GLRender.h"
-#include "Glextensions.h"
+#include "GLExtensions.h"
 #include "PGTexture.h"
 #include "PGUTexture.h"
 
@@ -67,6 +67,10 @@ grTexSource( GrChipID_t tmu,
 
     Glide.State.TexSource.StartAddress = startAddress;
     Glide.State.TexSource.EvenOdd = evenOdd;
+    Glide.State.TexSource.Info.aspectRatio = info->aspectRatio;
+    Glide.State.TexSource.Info.format = info->format;
+    Glide.State.TexSource.Info.largeLod = info->largeLod;
+    Glide.State.TexSource.Info.smallLod = info->smallLod;
 
     Textures->Source( startAddress, evenOdd, info );    
 }
@@ -125,13 +129,12 @@ grTexDownloadMipMapLevel( GrChipID_t        tmu,
         tmu, startAddress, thisLod, largeLod, aspectRatio, format, evenOdd, data );
 #endif
 
-    if ( ( tmu != GR_TMU0 ) || ( thisLod != largeLod ) )
-//    if ( tmu != GR_TMU0 )
+    if ( ( tmu != GR_TMU0 ) )
     {
         return;
     }
 
-    static GrTexInfo info;
+    GrTexInfo info;
 
     info.smallLod       = thisLod;
     info.largeLod       = largeLod;
@@ -160,12 +163,13 @@ grTexDownloadMipMapLevelPartial( GrChipID_t        tmu,
         tmu, startAddress, thisLod, largeLod, aspectRatio, format, evenOdd, start, end );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( ( tmu != GR_TMU0 ) )
     {
         return;
     }
 
     GrTexInfo info;
+
     info.smallLod    = thisLod;
     info.largeLod    = largeLod;
     info.aspectRatio = aspectRatio;
@@ -360,7 +364,7 @@ grTexDownloadTablePartial( GrChipID_t   tmu,
 
     RenderDrawTriangles( );
 
-    Textures->DownloadTable( type, (FxU32*)data, start, end + 1 - start );
+    Textures->DownloadTable( type, ((FxU32*)data) + start, start, end + 1 - start );
 }
 
 //*************************************************
@@ -393,6 +397,9 @@ grTexLodBiasValue( GrChipID_t tmu, float bias )
     GlideMsg( "grTexLodBiasValue( %d, %d )\n",
         tmu, bias );
 #endif
+
+    RenderDrawTriangles();
+    Glide.State.LodBias = bias;
 
     if ( InternalConfig.EXT_texture_lod_bias )
     {

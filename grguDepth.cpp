@@ -5,7 +5,7 @@
 //*               Depth (Z/W-Buffer) Functions
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -62,8 +62,8 @@ grDepthBufferMode( GrDepthBufferMode_t mode )
 
     if ( Glide.State.OriginInformation == GR_ORIGIN_LOWER_LEFT )
     {
-        glOrtho( Glide.State.ClipMinX, Glide.State.ClipMaxX,
-                 Glide.State.ClipMinY, Glide.State.ClipMaxY,
+        glOrtho( Glide.State.ClipMinX, Glide.State.ClipMaxX, 
+                 Glide.State.ClipMinY, Glide.State.ClipMaxY, 
                  OpenGL.ZNear, OpenGL.ZFar );
         glViewport( OpenGL.ClipMinX, OpenGL.ClipMinY,
                     OpenGL.ClipMaxX - OpenGL.ClipMinX,
@@ -87,7 +87,7 @@ grDepthBufferMode( GrDepthBufferMode_t mode )
 }
 
 //*************************************************
-//* Enables or Disables Depth Buffer Writing
+//* Enables or Disables Depth Buffer Writting
 //*************************************************
 FX_ENTRY void FX_CALL
 grDepthMask( FxBool enable )
@@ -146,7 +146,8 @@ grDepthBiasLevel( FxI16 level )
 
     Glide.State.DepthBiasLevel = level;
     //OpenGL.DepthBiasLevel = level * D1OVER65536;
-    OpenGL.DepthBiasLevel = level * 10.0f;
+    OpenGL.DepthBiasLevel = level * 128.0f;
+    OpenGL.DepthBiasLevel /= (OpenGL.DepthBufferType)? 1.0f:12.8f;
 
     glPolygonOffset( 1.0f, OpenGL.DepthBiasLevel );
 

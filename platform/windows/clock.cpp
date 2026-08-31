@@ -5,7 +5,7 @@
 //*             Windows specific clock functions
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -47,5 +47,12 @@ float ClockFrequency( void )
     return (float)d_clock_freq;
 }
 #pragma optimize( "", on )
+
+int getpagesize(void)
+{
+    SYSTEM_INFO system_info;
+    GetSystemInfo(&system_info);
+    return system_info.dwPageSize;
+}
 
 #endif // WIN32

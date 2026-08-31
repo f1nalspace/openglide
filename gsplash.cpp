@@ -17,8 +17,11 @@
  ** 
  ** COPYRIGHT 3DFX INTERACTIVE, INC. 1999, ALL RIGHTS RESERVED
  **
- ** $Header$
- ** $Log$
+ ** $Header: /cvsroot/openglide/openglide/gsplash.cpp,v 1.6 2009/02/15 23:55:30 s_a_white Exp $
+ ** $Log: gsplash.cpp,v $
+ ** Revision 1.6  2009/02/15 23:55:30  s_a_white
+ ** Restore origin
+ **
  ** Revision 1.5  2009/02/15 22:44:46  s_a_white
  ** Fix debug message
  **
@@ -40,7 +43,7 @@
  **
  * 
  * 14    12/19/97 8:09a Peter
- * fog table propagation
+ * fog table propogation
  * 
  * 13    7/07/97 3:05p Dow
  * Moved fouled clears
@@ -753,7 +756,7 @@ grSplash (float x, float y, float w, float h, FxU32 _frame)
     }
   }
 
-  if ( (Glide.State.OriginInformation == GR_ORIGIN_UPPER_LEFT) ) {
+  if (Glide.State.OriginInformation == GR_ORIGIN_UPPER_LEFT) {
     y = (( Glide.WindowHeight - 1.0f ) - (h-1.0f) ) - y;
   }
         
@@ -901,7 +904,7 @@ grSplash (float x, float y, float w, float h, FxU32 _frame)
     drawFaces( frame, 1 );
   }
     
-  /* Get rid of the remnants on the screen just in case
+  /* Get rid of the remnants on teh screen just in case
    * the app doesn't do it itself yet
    * assumes that the screen is clear.
    */

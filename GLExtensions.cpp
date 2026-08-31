@@ -5,7 +5,7 @@
 //*                    OpenGL Extensions
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -16,7 +16,7 @@
 
 #include "GlOgl.h"
 #include "GLRender.h"
-#include "Glextensions.h"
+#include "GLExtensions.h"
 
 #include "platform/openglext.h"
 #include "platform/error.h"
@@ -43,14 +43,22 @@ bool dummyExtVariable2 = true;
 
 stExtensionSupport glNecessaryExt[] =
 {
+#ifdef __darwin__
+    { "GL_APPLE_packed_pixels",         OGL_EXT_REQUIRED,   &dummyExtVariable,                  &dummyExtVariable2 },
+#else
     { "GL_EXT_packed_pixels",           OGL_EXT_REQUIRED,   &dummyExtVariable,                  &dummyExtVariable2 },
+#endif
     { "GL_EXT_abgr",                    OGL_EXT_REQUIRED,   &dummyExtVariable,                  &dummyExtVariable2 },
     { "GL_EXT_bgra",                    OGL_EXT_REQUIRED,   &dummyExtVariable,                  &dummyExtVariable2 },
     { "GL_EXT_secondary_color",         OGL_EXT_DESIRED,    &dummyExtVariable,                  &InternalConfig.EXT_secondary_color },
     { "GL_ARB_multitexture",            OGL_EXT_DESIRED,    &UserConfig.ARB_multitexture,       &InternalConfig.ARB_multitexture },
     { "GL_EXT_fog_coord",               OGL_EXT_DESIRED,    &dummyExtVariable,                  &InternalConfig.EXT_fog_coord },
     { "GL_EXT_texture_env_add",         OGL_EXT_DESIRED,    &dummyExtVariable,                  &InternalConfig.EXT_texture_env_add },
+#ifdef __darwin__
+    { "GL_ARB_texture_env_combine",     OGL_EXT_DESIRED,    &dummyExtVariable,                  &InternalConfig.EXT_texture_env_combine },
+#else
     { "GL_EXT_texture_env_combine",     OGL_EXT_DESIRED,    &dummyExtVariable,                  &InternalConfig.EXT_texture_env_combine },
+#endif
     { "GL_EXT_texture_lod_bias",        OGL_EXT_DESIRED,    &dummyExtVariable,                  &InternalConfig.EXT_texture_lod_bias },
     { "GL_SGIS_generate_mipmap",        OGL_EXT_DESIRED,    &UserConfig.EnableMipMaps,          &InternalConfig.BuildMipMaps },
     { "GL_EXT_paletted_texture",        OGL_EXT_DESIRED,    &UserConfig.EXT_paletted_texture,   &InternalConfig.EXT_paletted_texture },
@@ -196,7 +204,6 @@ void ResetInternalConfig( void )
     InternalConfig.TextureMemorySize            = 16;
     InternalConfig.FrameBufferMemorySize        = 8;
 
-    InternalConfig.MMXEnable                    = false;
     InternalConfig.CreateWindow                 = false;
 }
 
@@ -235,7 +242,11 @@ void ValidateUserConfig( void )
 	int ver    = 0;
 	int subver = 0;
 
-	sscanf( (const char *)glGetString( GL_VERSION ), "%d.%d", &ver, &subver);
+        char *p = (char *)glGetString( GL_VERSION );
+        ver = strtol(p, 0, 10);
+        p = strchr(p, '.');
+        subver = strtol(++p, 0, 10);
+	//sscanf( (const char *)glGetString( GL_VERSION ), "%d.%d", &ver, &subver);
 
     InternalConfig.OGLVersion = ver * 100 + subver;
 
@@ -250,17 +261,38 @@ void ValidateUserConfig( void )
         case OGL_EXT_REQUIRED:
             if ( ! OGLIsExtensionSupported( glNecessaryExt[ index ].name ) )
             {
-                char szError[ 256 ];
-                sprintf( szError, "Severe Problem: OpenGL %s extension is required for OpenGLide!", 
-                    glNecessaryExt[ index ].name );
-                Error( szError );
-                GlideMsg( szError );
-                ReportWarning( szError );
+                if (index || InternalConfig.OGLVersion < 102)
+                {
+                    char szError[ 256 ];
+                    sprintf( szError, "Severe Problem: OpenGL %s extension is required for OpenGLide!",
+                        glNecessaryExt[ index ].name );
+                    Error( szError );
+                    GlideMsg( szError );
+                    ReportWarning( szError );
+                }
             }
             break;
 
         case OGL_EXT_DESIRED:
-            if ( ! OGLIsExtensionSupported( glNecessaryExt[ index ].name ) )
+            if ( !strcmp(glNecessaryExt[ index ].name, "GL_EXT_vertex_array") &&
+                     InternalConfig.OGLVersion >= 101 )
+            {
+                if ( *glNecessaryExt[ index ].userVar )
+                {
+                    *glNecessaryExt[ index ].internalVar = true;
+                    GlideMsg( "Extension %s is present and ENABLED\n", glNecessaryExt[ index ].name );
+                }
+                else
+                {
+                    char szError[ 256 ];
+                    sprintf( szError, "Note: OpenGL %s extension is supported but disabled by user\n",
+                        glNecessaryExt[ index ].name );
+                    GlideMsg( szError );
+
+                    *glNecessaryExt[ index ].internalVar = false;
+                }
+            }
+            else if ( ! OGLIsExtensionSupported( glNecessaryExt[ index ].name ) )
             {
                 char szError[ 256 ];
                 sprintf( szError, "Note: OpenGL %s extension is not supported, emulating behavior.\n", 
@@ -304,27 +336,8 @@ void ValidateUserConfig( void )
 
     if ( InternalConfig.EXT_fog_coord )
     {
-        InternalConfig.FogEnable    = true;
+        InternalConfig.FogEnable    = (UserConfig.FogEnable)? true:false;
     }
-
-    if ( DetectMMX( ) )
-    {
-        InternalConfig.MMXEnable    = true;
-    }
-    else
-    {
-#ifdef HAVE_MMX
-        char szError[ 256 ];
-        sprintf( szError, "Severe Problem: MMX is required for OpenGLide!" );
-        Error( szError );
-        GlideMsg( szError );
-        ReportError( szError );
-        exit( 1 );
-#else
-        InternalConfig.MMXEnable    = false;
-#endif
-    }
-
     GLExtensions( );
 }
 
@@ -392,7 +405,7 @@ void GLExtensions( void )
         else
         {
             glFogi( GL_FOG_COORDINATE_SOURCE_EXT, GL_FOG_COORDINATE_EXT );
-            glFogf( GL_FOG_MODE, GL_LINEAR );
+            glFogi( GL_FOG_MODE, GL_LINEAR );
             glFogf( GL_FOG_START, 0.0f );
             glFogf( GL_FOG_END, 1.0f );
         }

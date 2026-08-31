@@ -17,8 +17,11 @@
 ** 
 ** COPYRIGHT 3DFX INTERACTIVE, INC. 1999, ALL RIGHTS RESERVED
 **
-** $Header$
-** $Log$
+** $Header: /cvsroot/openglide/openglide/splash.dat,v 1.1 2009/02/15 09:36:55 s_a_white Exp $
+** $Log: splash.dat,v $
+** Revision 1.1  2009/02/15 09:36:55  s_a_white
+** Add splash screen
+**
 ** Revision 1.1.1.1.2.1  2004/12/23 20:56:08  koolsmoky
 ** builds without asm optimizations (USE_X86=1)
 **

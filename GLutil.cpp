@@ -5,7 +5,7 @@
 //*                      Utility File
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -17,12 +17,13 @@
 
 #include "wrapper_config.h"
 #include "GlOgl.h"
-#include "Glextensions.h"
+#include "GLExtensions.h"
 #include "OGLTables.h"
 
 #include "platform.h"
 #include "platform/window.h"
 #include "platform/clock.h"
+#include "fgfont.h"
 
 // Configuration Variables
 ConfigStruct    UserConfig;
@@ -35,7 +36,7 @@ extern unsigned long    NumberOfErrors;
 
 VARARGDECL(void) GlideMsg( const char *szString, ... )
 {
-    va_list Arg;
+    va_list( Arg );
     va_start( Arg, szString );
 
     FILE *fHandle = fopen( GLIDEFILE, "at" );
@@ -52,7 +53,7 @@ VARARGDECL(void) GlideMsg( const char *szString, ... )
 
 VARARGDECL(void) Error( const char *szString, ... )
 {
-    va_list Arg;
+    va_list( Arg );
     va_start( Arg, szString );
 
     if ( NumberOfErrors == 0 )
@@ -126,20 +127,25 @@ void ConvertColor4B( GrColor_t GlideColor, FxU32 &C )
         break;
 
     case GR_COLORFORMAT_ABGR:   //0xAABBGGRR
-        C = ( ( GlideColor & 0xFF00FF00 ) ||
-              ( ( GlideColor & 0x00FF0000 ) >> 16 ) ||
+        C = ( ( GlideColor & 0xFF00FF00 ) |
+              ( ( GlideColor & 0x00FF0000 ) >> 16 ) |
               ( ( GlideColor & 0x000000FF ) <<  16 ) );
         break;
 
     case GR_COLORFORMAT_RGBA:   //0xRRGGBBAA
-        C = ( ( ( GlideColor & 0x00FFFFFF ) << 8 ) ||
-              ( ( GlideColor & 0xFF000000 ) >> 24 ) );
+        // Rotate right, not left: red sits in the top byte and has to end up
+        // in bits 16..23, alpha sits in the bottom byte and belongs in the top
+        // one. The old line rotated the other way, which turned Diablo II's
+        // black chroma key 0x000000FF into a green 0x0000FF00 -- a colour that
+        // is in no palette, so nothing was ever keyed out. See docs/LOG.md.
+        C = ( ( ( GlideColor & 0xFFFFFF00 ) >> 8 ) |
+              ( ( GlideColor & 0x000000FF ) << 24 ) );
         break;
 
     case GR_COLORFORMAT_BGRA:   //0xBBGGRRAA
-        C = ( ( ( GlideColor & 0xFF000000 ) >> 24 ) ||
-              ( ( GlideColor & 0x00FF0000 ) >>  8 ) ||
-              ( ( GlideColor & 0x0000FF00 ) <<  8 ) ||
+        C = ( ( ( GlideColor & 0xFF000000 ) >> 24 ) |
+              ( ( GlideColor & 0x00FF0000 ) >>  8 ) |
+              ( ( GlideColor & 0x0000FF00 ) <<  8 ) |
               ( ( GlideColor & 0x000000FF ) << 24 ) );
         break;
     }
@@ -270,15 +276,18 @@ void GetOptions( void )
     UserConfig.EXT_paletted_texture         = true;
     UserConfig.EXT_texture_env_add          = false;
     UserConfig.EXT_texture_env_combine      = false;
-    UserConfig.EXT_vertex_array             = false;
+    UserConfig.EXT_vertex_array             = true;
     UserConfig.EXT_fog_coord                = true;
     UserConfig.EXT_blend_func_separate      = false;
     UserConfig.Wrap565to5551                = true;
+    UserConfig.FramebufferSRGB              = false;
+    UserConfig.Annotate                     = false;
 
     UserConfig.Resolution                   = 0;
 
     UserConfig.TextureMemorySize            = 16;
     UserConfig.FrameBufferMemorySize        = 8;
+    UserConfig.SamplesMSAA                  = 0;
 
     UserConfig.Priority                     = 2;
 
@@ -306,15 +315,19 @@ void GetOptions( void )
         fprintf( IniFile, "CreateWindow=%d\n", UserConfig.CreateWindow );
         fprintf( IniFile, "InitFullScreen=%d\n", UserConfig.InitFullScreen );
         fprintf( IniFile, "Resolution=%.1f\n", UserConfig.Resolution );
+        fprintf( IniFile, "FogEnable=%d\n", UserConfig.FogEnable );
         fprintf( IniFile, "EnableMipMaps=%d\n", UserConfig.EnableMipMaps );
         fprintf( IniFile, "IgnorePaletteChange=%d\n", UserConfig.IgnorePaletteChange );
         fprintf( IniFile, "Wrap565to5551=%d\n", UserConfig.Wrap565to5551 );
+        fprintf( IniFile, "FramebufferSRGB=%d\n", UserConfig.FramebufferSRGB );
         fprintf( IniFile, "EnablePrecisionFix=%d\n", UserConfig.PrecisionFix );
         fprintf( IniFile, "EnableMultiTextureEXT=%d\n", UserConfig.ARB_multitexture );
         fprintf( IniFile, "EnablePaletteEXT=%d\n", UserConfig.EXT_paletted_texture );
         fprintf( IniFile, "EnableVertexArrayEXT=%d\n", UserConfig.EXT_vertex_array );
         fprintf( IniFile, "TextureMemorySize=%d\n", UserConfig.TextureMemorySize );
         fprintf( IniFile, "FrameBufferMemorySize=%d\n", UserConfig.FrameBufferMemorySize );
+        fprintf( IniFile, "SamplesMSAA=%d\n", UserConfig.SamplesMSAA );
+        fprintf( IniFile, "Annotate=%d\n", UserConfig.Annotate );
         fprintf( IniFile, "NoSplash=%d\n", UserConfig.NoSplash );
         fclose( IniFile );
     }
@@ -329,6 +342,8 @@ void GetOptions( void )
                 UserConfig.InitFullScreen = atoi( Pointer ) ? true : false;
             if ( (Pointer = FindConfig(Path, "Resolution")) )
                 UserConfig.Resolution = atof( Pointer );
+            if ( (Pointer = FindConfig(Path, "FogEnable")) )
+                UserConfig.FogEnable = atoi( Pointer ) ? true : false;
             if ( (Pointer = FindConfig(Path, "EnableMipMaps")) )
                 UserConfig.EnableMipMaps = atoi( Pointer ) ? true : false;
             if ( (Pointer = FindConfig(Path, "IgnorePaletteChange")) )
@@ -347,8 +362,14 @@ void GetOptions( void )
                 UserConfig.Priority = atoi( Pointer );
             if ( (Pointer = FindConfig(Path, "Wrap565to5551")) )
                 UserConfig.Wrap565to5551 = atoi( Pointer ) ? true : false;
+            if ( (Pointer = FindConfig(Path, "FramebufferSRGB")) )
+                UserConfig.FramebufferSRGB = atoi( Pointer ) ? true : false;
             if ( (Pointer = FindConfig(Path, "FrameBufferMemorySize")) )
                 UserConfig.FrameBufferMemorySize = atoi( Pointer );
+            if ( (Pointer = FindConfig(Path, "SamplesMSAA")) )
+                UserConfig.SamplesMSAA = atoi( Pointer );
+            if ( (Pointer = FindConfig(Path, "Annotate")) )
+                UserConfig.Annotate = atoi( Pointer ) ? true : false;;
             if ( (Pointer = FindConfig(Path, "NoSplash")) )
                 UserConfig.NoSplash = atoi( Pointer ) ? true : false;;
             if ( (Pointer = FindConfig(Path, "ShamelessPlug")) )
@@ -362,12 +383,154 @@ void GetOptions( void )
     }
 }
 
+static struct {
+    uint64_t last;
+    uint32_t fcount;
+    float ftime;
+    int base;
+} fxstats;
 
-FX_ENTRY void FX_CALL setConfig(FxU32 flags)
+static void fgFontGenList(int first, int count, uint32_t listBase)
 {
-    UserConfig.EnableMipMaps = ((flags & WRAPPER_FLAG_MIPMAPS) != 0);
+    const SFG_Font *font = &fgFontFixed8x13;
+    int org_alignment;
+    glGetIntegerv(GL_UNPACK_ALIGNMENT, &org_alignment);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    for (int i = first; i < (first + count); i++) {
+        const unsigned char *face = font->Characters[i];
+        glNewList(listBase++, GL_COMPILE);
+        glBitmap(
+            face[ 0 ], font->Height,
+            font->xorig, font->yorig,
+            ( float )( face [ 0 ] ), 0.0,
+            ( face + 1 )
+        );
+        glEndList();
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, org_alignment);
 }
 
+static void drawstr(const char *str, const int colors)
+{
+    glPushMatrix();
+    glPushAttrib(
+        GL_COLOR_BUFFER_BIT |
+        GL_DEPTH_BUFFER_BIT |
+        GL_STENCIL_BUFFER_BIT |
+        GL_LIGHTING_BIT |
+        GL_SCISSOR_BIT |
+        GL_TEXTURE_BIT |
+        GL_TRANSFORM_BIT |
+        GL_VIEWPORT_BIT |
+        GL_CURRENT_BIT);
+    glLoadIdentity();
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, OpenGL.WindowWidth, 0, OpenGL.WindowHeight);
+
+    glDisable(GL_ALPHA_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+
+    glEnable(GL_SCISSOR_TEST);
+    glScissor((OpenGL.WindowOffset+11), 6, 11 + (8 * strlen(str)), 14);
+    glClearColor(0.f, 0.f, 0.f, 0.f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glListBase(fxstats.base);
+    glColor3ubv((const GLubyte *)&colors);
+    glRasterPos2i(13, 8);
+    glCallLists(strlen(str), GL_UNSIGNED_BYTE, str);
+
+    glPopMatrix();
+    glPopAttrib();
+    glPopMatrix();
+}
+
+#ifndef NANOSECONDS_PER_SECOND
+#define NANOSECONDS_PER_SECOND get_ticks_per_sec()
+static uint64_t get_ticks_per_sec(void) { return 1000000000LL; }
+#endif
+static uint64_t get_ticks_monotonic(void)
+{
+    struct timespec tp;
+    if (clock_gettime(CLOCK_MONOTONIC, &tp))
+        return -1;
+    return (tp.tv_sec * NANOSECONDS_PER_SECOND) + tp.tv_nsec;
+
+}
+void annotate_last(void)
+{
+    if (fxstats.base)
+        glDeleteLists(fxstats.base, 256);
+    fxstats.base = 0;
+    fxstats.fcount = 0;
+    fxstats.last = 0;
+}
+
+void annotate_stat(void)
+{
+    static char stats_line[] = "xxxx frames in xxx.x seconds xxx.x FPS";
+    uint64_t curr;
+    int i;
+
+    if (UserConfig.Annotate) {
+        if (fxstats.last == 0) {
+            if (fxstats.fcount == 0) {
+                fxstats.base = glGenLists(256);
+                fgFontGenList(0, 255, fxstats.base);
+                snprintf(stats_line, sizeof(stats_line), "%s", "Init ...");
+            }
+            fxstats.fcount = 0;
+            fxstats.ftime = 0;
+            fxstats.last = get_ticks_monotonic();
+            return;
+        }
+        curr = get_ticks_monotonic();
+        fxstats.fcount++;
+        fxstats.ftime += (curr - fxstats.last) * (1.f / NANOSECONDS_PER_SECOND);
+        fxstats.last = curr;
+        i = (int)fxstats.ftime;
+        if (i && ((i % 5) == 0)) {
+            fxstats.last = 0;
+            snprintf(stats_line, sizeof(stats_line), "%-4u frames in %-4.1f seconds %-5.1f FPS",
+                fxstats.fcount, fxstats.ftime, fxstats.fcount / fxstats.ftime);
+        }
+        drawstr(stats_line, 0x00FFFFFF);
+    }
+}
+
+FX_ENTRY void FX_CALL setConfig(FxU32 flags, void *magic)
+{
+    if (magic) {
+#ifdef C_USE_SDL
+        uint32_t *SignSDL = (uint32_t *)magic;
+        *SignSDL = (*SignSDL == 0x58326724 /*'$g2X'*/)?
+            0x324c4453 /*'SDL2'*/:0;
+#endif
+    }
+    UserConfig.EnableMipMaps = (UserConfig.EnableMipMaps == 0)?
+        ((flags & WRAPPER_FLAG_MIPMAPS) != 0):UserConfig.EnableMipMaps;
+    UserConfig.FramebufferSRGB = (UserConfig.FramebufferSRGB == 0)?
+        ((flags & WRAPPER_FLAG_FRAMEBUFFER_SRGB) != 0):UserConfig.FramebufferSRGB;
+    UserConfig.SamplesMSAA = (UserConfig.SamplesMSAA == 0)?
+        (((flags & WRAPPER_FLAG_MSAA_MASK) > 8)? 16:(flags & WRAPPER_FLAG_MSAA_MASK)):UserConfig.SamplesMSAA;
+    UserConfig.Annotate = (UserConfig.Annotate == 0)?
+        ((flags & WRAPPER_FLAG_ANNOTATE) != 0):UserConfig.Annotate;
+    UserConfig.VsyncOff = ((flags & WRAPPER_FLAG_VSYNCOFF) != 0);
+    UserConfig.QEmu = ((flags & WRAPPER_FLAG_QEMU) != 0);
+    UserConfig.InitFullScreen = (flags & WRAPPER_FLAG_WINDOWED)? false:true;
+}
+
+FX_ENTRY void FX_CALL setConfigRes(int res, void *swap12)
+{
+    UserConfig.Resolution = 1.f * res;
+    UserConfig.swap12 = swap12;
+}
 
 bool ClearAndGenerateLogFile( void )
 {
@@ -442,32 +605,3 @@ bool GenerateErrorFile( void )
     return true;
 }
 
-// Detect if Processor has MMX Instructions
-int DetectMMX( void )
-{
-#ifdef HAVE_MMX
-    FxU32 Result;
-
-#ifdef _MSC_VER
-    __asm
-    {
-        push EAX
-        push EDX
-        mov EAX, 1
-        CPUID
-        mov Result, EDX
-        pop EDX
-        pop EAX
-    }
-    return Result & 0x00800000;
-#endif
-
-#ifdef __GNUC__
-	return __builtin_cpu_supports("mmx");
-
-#endif
-
-#else
-    return 0;
-#endif
-}

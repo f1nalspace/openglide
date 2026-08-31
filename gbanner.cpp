@@ -17,8 +17,12 @@
 ** 
 ** COPYRIGHT 3DFX INTERACTIVE, INC. 1999, ALL RIGHTS RESERVED
 **
-** $Header$
-** $Log$
+** $Header: /cvsroot/openglide/openglide/gbanner.cpp,v 1.1 2009/02/15 21:54:46 s_a_white Exp $
+** $Log: gbanner.cpp,v $
+** Revision 1.1  2009/02/15 21:54:46  s_a_white
+** Add banner support (shameless plug) and user configuration options for
+** this and the splash screen
+**
 ** Revision 1.2  2005/07/20 20:45:56  jens-olaf
 ** Commented out unwanted code instead of using #define statements
 **

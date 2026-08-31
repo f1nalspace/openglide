@@ -5,7 +5,7 @@
 //*                      Main Header
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -65,8 +65,6 @@
 #define OGL_MAX_TEXTURE_BUFFER  32
 
 #define OGL_VER_1_1             101
-
-#define OPENGLFOGTABLESIZE      64 * 1024
 
 #define D1OVER255               0.003921568627451f      // 1 / 255
 #define D1OVER65536             0.0000152587890625f     // 1 / 65536
@@ -175,6 +173,7 @@ struct GlideState
     GrColorFormat_t         ColorFormat;
     FxU32                   STWHint;
     FxBool                  VRetrace;
+    FxFloat		    LodBias;
 };
 
 struct GlideStruct
@@ -187,7 +186,7 @@ struct GlideStruct
     int                     NumBuffers;
     int                     AuxBuffers;
     // States and Constants
-    FxU8                    FogTable[ GR_FOG_TABLE_SIZE + 1 ];
+    FxU8                    FogTable[ GR_FOG_TABLE_SIZE ];
     FxU32                   TexMemoryMaxPosition;
     bool                    CLocal;
     bool                    COther;
@@ -207,6 +206,7 @@ struct OpenGLStruct
     bool                    WinOpen;
     GLsizei                 WindowWidth;
     GLsizei                 WindowHeight;
+    GLsizei                 WindowOffset;
     FxU32                   WindowTotalPixels;
     GLfloat                 Gamma;
     GLfloat                 AlphaReferenceValue;
@@ -235,7 +235,6 @@ struct OpenGLStruct
     GLfloat                 ZNear;
     GLfloat                 ZFar;
     GLfloat                 FogColor[ 4 ];
-    FxU8                    FogTable[ OPENGLFOGTABLESIZE ];
     OGLByteColor            ChromaColor;
     bool                    Fog;
     bool                    Texture;
@@ -248,6 +247,7 @@ struct OpenGLStruct
     int                     MultiTextureTMUs;
     int                     DepthBufferType;
     int                     WaitSignal;
+    char                    *oneBuf;
     FxU32                   *tmpBuf;
 };
 
@@ -257,8 +257,10 @@ struct ConfigStruct
     int     Priority;
     int     TextureMemorySize;
     int     FrameBufferMemorySize;
+    int     SamplesMSAA;
 
     float   Resolution;
+    void    *swap12;
 
     bool    FogEnable;
     bool    InitFullScreen;
@@ -267,8 +269,8 @@ struct ConfigStruct
     bool    BuildMipMaps;
     bool    IgnorePaletteChange;
     bool    Wrap565to5551;
+    bool    FramebufferSRGB;
     bool    TextureEnv;
-    bool    MMXEnable;
     bool    CreateWindow;
 
     bool    EXT_secondary_color;
@@ -284,6 +286,9 @@ struct ConfigStruct
 
     bool    NoSplash;
     bool    ShamelessPlug;
+    bool    Annotate;
+    bool    VsyncOff;
+    bool    QEmu;
 };
 
 // Extern variables
@@ -304,7 +309,7 @@ extern GLIDEERRORFUNCTION   ExternErrorFunction;
     extern double           FpsAux;
 #endif
 
-// General Prototypes
+// Genral Prototypes
 VARARGDECL(void) GlideMsg( const char *szString, ... );
 VARARGDECL(void) Error( const char *szString, ... );
 void GLErro( const char *Funcao );
@@ -320,6 +325,6 @@ void InitOpenGL( void );
 void GetOptions( void );
 void InitMainVariables( void );
 
-int DetectMMX();
-
+void annotate_last(void);
+void annotate_stat(void);
 #endif

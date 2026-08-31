@@ -5,7 +5,7 @@
 //*     SDL specific functions for handling display window
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -16,135 +16,329 @@
 #ifdef C_USE_SDL
 
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
+#if defined(__linux__) || defined(__darwin__)
+#include <dlfcn.h>
+#define LOAD_SOLIB(x) \
+    x = dlopen(dllname, RTLD_LAZY) ; \
+    if (!x) { \
+        const char *local_lib; \
+        char local_path[] = "/usr/local/lib/libSDL2.sonamexyz"; \
+        local_path[strlen("/usr/local/lib/")] = '\x0'; \
+        local_lib = strcat(local_path, dllname); \
+        x = dlopen(local_lib, RTLD_LAZY); \
+    } \
+    if (!x) { fprintf(stderr, "Error loading %s\n", dllname); return false; }
+#define FREE_SOLIB(x) \
+    dlclose(x); x = 0
+#define INIT_SUBSS(x) \
+    SDL20func.GLGetAttribute = (int (*)(SDL_GLattr, int *))dlsym(x, "SDL_GL_GetAttribute"); \
+    SDL20func.GLSetAttribute = (int (*)(SDL_GLattr, int))dlsym(x, "SDL_GL_SetAttribute"); \
+    InitSubSystem = (int (*)(const int))dlsym(x, "SDL_InitSubSystem"); \
+    unsetenv("SDL_VIDEODRIVER")
+#define QUIT_SUBSS(x) \
+    QuitSubSystem = (void (*)(const int))dlsym(x, "SDL_QuitSubSystem")
+#else /* WIN32 */
+#define LOAD_SOLIB(x) \
+    x = LoadLibrary(dllname); \
+    if (!x) { fprintf(stderr, "Error loading %s\n", dllname); return false; }
+#define FREE_SOLIB(x) \
+    FreeLibrary((HMODULE)x); x = 0
+#define INIT_SUBSS(x) \
+    SDL20func.GLGetAttribute = (int (*)(SDL_GLattr, int *))GetProcAddress((HMODULE)x, "SDL_GL_GetAttribute"); \
+    SDL20func.GLSetAttribute = (int (*)(SDL_GLattr, int))GetProcAddress((HMODULE)x, "SDL_GL_SetAttribute"); \
+    InitSubSystem = (int (*)(const int))GetProcAddress((HMODULE)x, "SDL_InitSubSystem"); \
+    SetEnvironmentVariable("SDL_VIDEODRIVER", NULL)
+#define QUIT_SUBSS(x) \
+    QuitSubSystem = (void (*)(const int))GetProcAddress((HMODULE)x, "SDL_QuitSubSystem")
+#endif
+
 #include "SDL.h"
+#include "SDL_opengl.h"
 
 #include "GlOgl.h"
 
 #include "platform/window.h"
 
-static struct
-{
-    Uint16 red[ 256 ];
-    Uint16 green[ 256 ];
-    Uint16 blue[ 256 ];
+static struct gamma_ramp {
+    uint16_t red[256];
+    uint16_t blue[256];
+    uint16_t green[256];
 } old_ramp;
+static bool ramp_stored;
 
-static bool ramp_stored  = false;
-static bool wasInit      = false;
+/* The guest must never reach the host screen's gamma ramp.
+ *
+ * Despite its name, SDL_SetWindowGammaRamp is not per window on X11 -- it programs
+ * the CRTC, so a guest game dimming itself dims the whole desktop. Worse, the ramp
+ * stays that way when the game does not exit cleanly, and the user is left with an
+ * unreadable screen. That is how the host display was lost in docs/LOG.md [234].
+ *
+ * The same failure was fixed for the Mesa path in qemu-3dfx commit 5664fbc. This is
+ * the Glide half of it and deliberately uses the very same switch, so that one
+ * setting covers both paths:
+ *
+ *     QEMU_3DFX_HOST_GAMMA=1
+ *
+ * Second point: what the guest asked for is remembered, so a game reading its ramp
+ * back gets its own values even though the host screen was never touched. Note that
+ * old_ramp does not hold the user's ramp either -- it is filled with a computed
+ * identity, so writing it back on exit would destroy a calibrated host display just
+ * as surely as the guest's own ramp would.
+ */
+static const int gammaRampEntryCount = 256;
+
+static int HostGammaPassthroughEnabled(void)
+{
+    static int alreadyChecked, isEnabled;
+
+    if (!alreadyChecked) {
+        const char *setting = getenv("QEMU_3DFX_HOST_GAMMA");
+        isEnabled = (setting && (setting[0] == '1'))? 1:0;
+        alreadyChecked = 1;
+    }
+    return isEnabled;
+}
+
+static struct gamma_ramp guestRequestedRamp;
+static bool guestRequestedRampValid;
+
+static SDL_Window *window;
+static SDL_Renderer *render;
+static SDL_GLContext context;
+static bool self_ctx, self_wnd, wnd_from;
+static void *hlib;
 
 bool InitialiseOpenGLWindow(FxU wnd, int x, int y, int width, int height)
 {
-    bool FullScreen = UserConfig.InitFullScreen;
-    wasInit = SDL_WasInit(SDL_INIT_VIDEO)!=0;
-    if(!wasInit)
-    {
-        bool err = false;
-        char *oldWindowId = 0;
-        char windowId[40];
+    const char dllname[] =
+#if defined(__darwin__)
+        "libSDL2.dylib"
+#elif defined(__linux__)
+        "libSDL2-2.0.so.0"
+#else /* WIN32 */
+        "SDL2.dll"
+#endif
+    ;
+    struct {
+        int (*GLGetAttribute)(SDL_GLattr, int *);
+        int (*GLSetAttribute)(SDL_GLattr, int);
+    } SDL20func = {
+        .GLGetAttribute = &SDL_GL_GetAttribute,
+        .GLSetAttribute = &SDL_GL_SetAttribute,
+    };
 
-        if (wnd)
-        {   // Set SDL window ID
-            sprintf (windowId, "SDL_WINDOWID=%ld", (long)wnd);
-            oldWindowId = getenv("SDL_WINDOWID");
-            if (oldWindowId)
-                oldWindowId = strdup(oldWindowId);
-            putenv(windowId);
+    self_wnd = false;
+    if (!wnd) {
+        const char *title = "SDL2-OpenGLide";
+        uint32_t flags = (UserConfig.InitFullScreen)? SDL_WINDOW_FULLSCREEN_DESKTOP:0;
+        window = SDL_CreateWindow(title, x, y, width, height, flags);
+        if (window) {
+            if (UserConfig.SamplesMSAA) {
+                SDL20func.GLSetAttribute(SDL_GL_MULTISAMPLEBUFFERS, SDL_TRUE);
+                SDL20func.GLSetAttribute(SDL_GL_MULTISAMPLESAMPLES, UserConfig.SamplesMSAA);
+            }
+            SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+            render = SDL_CreateRenderer(window, -1, 0);
         }
-
-        if (SDL_Init(SDL_INIT_VIDEO))
-        {
-            GlideMsg("Can't init SDL %s",SDL_GetError());
-            err = true;
+        self_wnd = (window)? true:false;
+    }
+    else {
+#if (SIZEOF_INT_P == 8)
+        /* SDL_Window is a native pointer. On 64-bit system, native pointers
+         * should have more than 32-bit values. Windows HWND and X11 Window handles
+         * are always in 32-bit values.
+         *
+         * Apple macOS NSWindow pointer has bit[32] set.
+         */
+        int (*InitSubSystem)(const int);
+        LOAD_SOLIB(hlib);
+        INIT_SUBSS(hlib);
+        wnd_from = false;
+        if (!(wnd & ((uintptr_t)0xFFFE << 32))) {
+            if (InitSubSystem && !InitSubSystem(SDL_INIT_VIDEO))
+                window = SDL_CreateWindowFrom((const void *)wnd);
+            if (window) {
+                if (UserConfig.SamplesMSAA) {
+                    SDL20func.GLSetAttribute(SDL_GL_MULTISAMPLEBUFFERS, SDL_TRUE);
+                    SDL20func.GLSetAttribute(SDL_GL_MULTISAMPLESAMPLES, UserConfig.SamplesMSAA);
+                }
+                SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+                render = SDL_CreateRenderer(window, -1, 0);
+            }
+            wnd_from = (window)? true:false;
         }
-
-        if (wnd)
-        {   // Restore old value
-            if (!oldWindowId)
-                putenv("SDL_WINDOWID");
-            else
-            {
-                sprintf (windowId, "SDL_WINDOWID=%s", oldWindowId);
-                putenv(windowId);
-                free (oldWindowId);
+#else
+        /* Never perform foreign window conversion for 32-bit system,
+         * OpenGLide for 32-bit system should be configured for
+         * native window with `--disable-sdl`.
+         */
+        if (0) { }
+#endif
+        else {
+            uint32_t flags = SDL_GetWindowFlags((SDL_Window *)wnd);
+            window = (SDL_Window *)wnd;
+            if (flags & SDL_WINDOW_OPENGL)
+                render = nullptr;
+            else {
+                render = SDL_GetRenderer(window);
+                if (render)
+                    SDL_DestroyRenderer(render);
+                SDL_SetHint(SDL_HINT_RENDER_DRIVER, "opengl");
+                render = SDL_CreateRenderer(window, -1, 0);
             }
         }
+    }
+    if (render) {
+        SDL_DestroyRenderer(render);
+        SDL_ResetHint(SDL_HINT_RENDER_DRIVER);
+    }
+    self_ctx = false;
+    context = SDL_GL_GetCurrentContext();
+    if (!context) {
+        context = SDL_GL_CreateContext(window);
+        self_ctx = (context)? true:false;
+    }
+    if (!context)
+        fprintf(stderr, "%s:%d %s\n", __FILE__, __LINE__, SDL_GetError());
+    else {
+        int cRedBits, cGreenBits, cBlueBits, cAlphaBits,cDepthBits, cStencilBits,
+            cAuxBuffers, nSamples[2], has_sRGB = UserConfig.FramebufferSRGB;
+        if (SDL_GL_MakeCurrent(window, context))
+            fprintf(stderr, "%s\n", SDL_GetError());
+        SDL20func.GLGetAttribute(SDL_GL_RED_SIZE, &cRedBits);
+        SDL20func.GLGetAttribute(SDL_GL_GREEN_SIZE, &cGreenBits);
+        SDL20func.GLGetAttribute(SDL_GL_BLUE_SIZE, &cBlueBits);
+        SDL20func.GLGetAttribute(SDL_GL_ALPHA_SIZE, &cAlphaBits);
+        SDL20func.GLGetAttribute(SDL_GL_DEPTH_SIZE, &cDepthBits);
+        SDL20func.GLGetAttribute(SDL_GL_STENCIL_SIZE, &cStencilBits);
+        SDL20func.GLGetAttribute(SDL_GL_MULTISAMPLEBUFFERS, &nSamples[0]);
+        SDL20func.GLGetAttribute(SDL_GL_MULTISAMPLESAMPLES, &nSamples[1]);
+        glGetIntegerv(GL_AUX_BUFFERS, &cAuxBuffers);
 
-        if (err)
-            return false;
-    } else {
-        SDL_Surface* tmpSurface = SDL_GetVideoSurface();
-        if (tmpSurface)
-        {
-            // Preserve window/fullscreen mode in SDL apps and override config file entry
-           (tmpSurface->flags&SDL_FULLSCREEN) ? (FullScreen = true) : (FullScreen = false);
+        fprintf(stderr, "Info: %s OpenGL %s\n", glGetString(GL_RENDERER), glGetString(GL_VERSION));
+        fprintf(stderr, "Info: Pixel Format ABGR%d%d%d%d D%2dS%d nAux %d nSamples %d %d %s\n",
+                cAlphaBits,cBlueBits, cGreenBits, cRedBits, cDepthBits, cStencilBits,
+                cAuxBuffers, nSamples[0], nSamples[1], (has_sRGB)? "sRGB":"");
 
-            // When in fullscreen, render at the same resolution
-            if((FullScreen) && (UserConfig.Resolution < 1.0f)) {
-                // Oneday perhaps a proper support for widescreen and 5:4 displays?
-                if((float)tmpSurface->w/tmpSurface->h < 1.33f) {
-                    OpenGL.WindowWidth = width = tmpSurface->w;
-                    OpenGL.WindowHeight = height = tmpSurface->w * 3 / 4;
-                } else {
-                    OpenGL.WindowWidth = width = tmpSurface->h * 4 / 3;
-                    OpenGL.WindowHeight = height = tmpSurface->h;
+        do {
+            int w, h;
+            SDL_GL_GetDrawableSize(window, &w, &h);
+            if (h > OpenGL.WindowHeight) {
+                float r = (1.f * height) / width,
+                      win_r = (1.f * h) / w;
+                if (r == win_r) {
+                    OpenGL.WindowWidth = w;
+                    OpenGL.WindowHeight = h;
+                    OpenGL.WindowOffset = 0;
+                }
+                else {
+                    OpenGL.WindowWidth = h / r;
+                    OpenGL.WindowHeight = h;
+                    OpenGL.WindowOffset = (w - OpenGL.WindowWidth) >> 1;
                 }
                 UserConfig.Resolution = OpenGL.WindowWidth;
             }
+        } while(0);
+
+        if (has_sRGB)
+            glEnable(GL_FRAMEBUFFER_SRGB);
+
+        if (cDepthBits > 16)
+            UserConfig.PrecisionFix = false;
+
+        for (int i = 0; i < 0x100; i++) {
+            old_ramp.red[i]   = (uint16_t)(((i << 8) | i) & 0xFFFFU);
+            old_ramp.green[i] = (uint16_t)(((i << 8) | i) & 0xFFFFU);
+            old_ramp.blue[i]  = (uint16_t)(((i << 8) | i) & 0xFFFFU);
         }
-    }
-
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
-
-    if((SDL_SetVideoMode(width, height, 32, FullScreen ? SDL_OPENGL|SDL_FULLSCREEN : SDL_OPENGL)) == 0)
-    {
-        GlideMsg("Video mode set failed: %s\n", SDL_GetError());
-        return false;
-    }
-
-    SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &height);
-    if ( height > 16 ) {
-        UserConfig.PrecisionFix = false;
-    }
-
-    if(SDL_GetGammaRamp(old_ramp.red, old_ramp.green, old_ramp.blue) != -1)
         ramp_stored = true;
 
-    return true;
+    }
+    return (context)? true:false;
 }
 
-void FinaliseOpenGLWindow( void)
+void FinaliseOpenGLWindow(void)
 {
+    int has_sRGB = UserConfig.FramebufferSRGB;
+
     if ( ramp_stored )
-        SDL_SetGammaRamp(old_ramp.red, old_ramp.green, old_ramp.blue);
-    if (!wasInit)
-        SDL_Quit();
+        SetGammaTable(&old_ramp);
+    if ( has_sRGB )
+        glDisable(GL_FRAMEBUFFER_SRGB);
+
+    SetSwapInterval(-1);
+
+    if ( self_ctx ) {
+        if (SDL_GL_MakeCurrent(window, NULL) == 0)
+            SDL_GL_DeleteContext(context);
+    }
+    if ( self_wnd )
+        SDL_DestroyWindow(window);
+    if ( wnd_from ) {
+        void (*QuitSubSystem)(const int);
+        QUIT_SUBSS(hlib);
+        QuitSubSystem(SDL_INIT_VIDEO);
+    }
+    if (hlib)
+        FREE_SOLIB(hlib);
+    context = 0;
+    window = 0;
 }
 
 void SetGamma(float value)
 {
-    struct
-    {
-        Uint16 red[256];
-        Uint16 green[256];
-        Uint16 blue[256];
-    } ramp;
-    int i;
+    struct gamma_ramp ramp;
 
-    for ( i = 0; i < 256; i++ )
-    {
-        Uint16 v = (Uint16)( 0xffff * pow( i / 255.0, 1.0 / value ) );
-
-        ramp.red[ i ] = ramp.green[ i ] = ramp.blue[ i ] = ( v & 0xff00 );
+    for (int i = 0; i < 0x100; i++) {
+        uint16_t v = (uint16_t)(0xFFFFU * pow(i / 255.f, 1.f / value));
+        ramp.red[i]   = v & 0xFF00U;
+        ramp.green[i] = v & 0xFF00U;
+        ramp.blue[i]  = v & 0xFF00U;
     }
-
-    SDL_SetGammaRamp(ramp.red, ramp.green, ramp.blue);
+    SetGammaTable(&ramp);
 }
 
 void RestoreGamma()
 {
+}
+
+void SetGammaTable(void *ptbl)
+{
+    struct gamma_ramp *ramp = (struct gamma_ramp *)ptbl;
+
+    memcpy(&guestRequestedRamp, ramp, sizeof(guestRequestedRamp));
+    guestRequestedRampValid = true;
+
+    if (!HostGammaPassthroughEnabled())
+        return;
+
+    if (window && !UserConfig.FramebufferSRGB)
+        SDL_SetWindowGammaRamp(window, ramp->red, ramp->green, ramp->blue);
+}
+
+void GetGammaTable(void *ptbl)
+{
+    struct gamma_ramp *ramp = (struct gamma_ramp *)ptbl;
+
+    if (!HostGammaPassthroughEnabled()) {
+        if (guestRequestedRampValid) {
+            memcpy(ramp, &guestRequestedRamp, sizeof(*ramp));
+            return;
+        }
+        for (int i = 0; i < gammaRampEntryCount; i++) {
+            uint16_t linearValue = (uint16_t)(((i << 8) | i) & 0xFFFFU);
+            ramp->red[i]   = linearValue;
+            ramp->green[i] = linearValue;
+            ramp->blue[i]  = linearValue;
+        }
+        return;
+    }
+
+    if (window)
+        SDL_GetWindowGammaRamp(window, ramp->red, ramp->green, ramp->blue);
 }
 
 bool SetScreenMode(int &xsize, int &ysize)
@@ -156,9 +350,28 @@ void ResetScreenMode()
 {
 }
 
+void SetSwapInterval(const int i)
+{
+    static int last_i = -1;
+    if (last_i != i) {
+        last_i = i;
+        if (i >= 0)
+            SDL_GL_SetSwapInterval(i);
+    }
+}
+
 void SwapBuffers()
 {
-    SDL_GL_SwapBuffers();
+    if (self_wnd) {
+        SDL_Event e;
+        while(SDL_PollEvent(&e));
+    }
+    if (UserConfig.swap12) {
+        void (*glSwapFunc)(void) = (void (*)(void))UserConfig.swap12;
+        glSwapFunc();
+        return;
+    }
+    SDL_GL_SwapWindow(window);
 }
 
 #endif // C_USE_SDL

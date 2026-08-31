@@ -14,8 +14,11 @@ n** as set forth in subdivision (c)(1)(ii) of the Rights in Technical Data
 ** successor clauses in the FAR, DOD or NASA FAR Supplement. Unpublished -
 ** rights reserved under the Copyright Laws of the United States.
 **
-** $Header$
-** $Log$
+** $Header: /cvsroot/openglide/openglide/sdk2_glidesys.h,v 1.1 2002/12/05 13:50:21 fbarros Exp $
+** $Log: sdk2_glidesys.h,v $
+** Revision 1.1  2002/12/05 13:50:21  fbarros
+** 3dfx sdk 2 header file
+**
 ** Revision 1.1.1.1  2001/06/25 18:00:50  paul
 ** v006 from sourceforge
 **

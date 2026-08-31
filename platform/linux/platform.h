@@ -5,7 +5,7 @@
 //*             Linux Specific includes and macros
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -25,12 +25,8 @@
 #define CopyMemory(d,s,l) memcpy(d,s,l)
 #define max(x,y) ((x) < (y) ? (y) : (x))
 
-#if HAVE_MMX
-# if SIZEOF_INT_P == 4
-#  define FASTCALL __attribute__((__fastcall__))
-# else
-#  define FASTCALL
-# endif
+#if SIZEOF_INT_P == 4
+#define FASTCALL __attribute__((__fastcall__))
 #else
 #define FASTCALL
 #endif

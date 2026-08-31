@@ -5,7 +5,7 @@
 //*           implementation of the PGUexture class
 //*
 //*         OpenGLide is OpenSource under LGPL license
-//*              Originally made by Fabio Barros
+//*              Originaly made by Fabio Barros
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
@@ -133,6 +133,25 @@ void PGUTexture::DownloadMipMap( GrMipMapId_t mmid, const void *src, const GuNcc
 
 void PGUTexture::DownloadMipMapLevel( GrMipMapId_t mmid, GrLOD_t lod, const void **src )
 {
+    if ( ( mmid >=0 ) && ( mmid < MAX_MM ) && ( mm_info[ mmid ].valid ) )
+    {
+        GrTexInfo info;
+        FxU32 size;
+
+        info.aspectRatio = mm_info[ mmid ].aspect_ratio;
+        info.format      = mm_info[ mmid ].format;
+        info.largeLod    = mm_info[ mmid ].lod_max;
+        info.smallLod    = mm_info[ mmid ].lod_min;
+
+        size = PGTexture::MipMapMemRequired( lod, info.aspectRatio, info.format );
+
+        grTexDownloadMipMapLevel( 0, mm_start[ mmid ], lod, lod, 
+                mm_info[ mmid ].aspect_ratio,
+                mm_info[ mmid ].format, 
+                mm_info[ mmid ].odd_even_mask, (void *)*src );
+
+        *src = (void *)(((intptr_t)*src) + size);
+    }
 }
 
 void PGUTexture::MemReset( void )

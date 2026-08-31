@@ -1,5 +1,4 @@
 AUTOMAKE_OPTIONS = foreign
-AM_CPPFLAGS = -I$(top_srcdir)
 
 noinst_LTLIBRARIES = libplatform.la
 

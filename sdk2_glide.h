@@ -534,7 +534,7 @@ typedef struct _GrState_s {
 #define GR_PARAM_DISABLE  0x00
 #define GR_PARAM_ENABLE   0x01
 
-/* Components for strips */
+/* Componenets for strips */
 /* vertex */
 #define GR_VERTEX_XYZ   3
 #define GR_VERTEX_XYZW  4

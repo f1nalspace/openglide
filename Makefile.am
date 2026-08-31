@@ -8,15 +8,17 @@ AUTOMAKE_OPTIONS = foreign
 SUBDIRS=platform
 EXTRA_DIST=splash.dat banner.dat
 
-lib_LTLIBRARIES = libglide2x.la
+lib_LTLIBRARIES = libglide2x.la libglide3x.la
 
 libglide2xincludedir = $(includedir)/openglide
 libglide2xinclude_HEADERS = \
 sdk2_glide.h \
+sdk2_glide3.h \
 sdk2_3dfx.h \
 sdk2_glidesys.h \
 sdk2_glideutl.h \
-sdk2_sst1vid.h
+sdk2_sst1vid.h \
+sdk2_unix.h
 
 libglide2x_la_SOURCES = \
 grguDepth.cpp \
@@ -41,9 +43,11 @@ grguBuffer.cpp \
 grguColorAlpha.cpp \
 GLutil.cpp \
 gsplash.cpp \
-\
+g3wrap.cpp \
+g3wrap.h \
 FormatConversion.h \
-Glextensions.h \
+glext.h \
+GLExtensions.h \
 GlOgl.h \
 GLRender.h \
 OGLTables.h \
@@ -51,15 +55,16 @@ PGTexture.h \
 PGUTexture.h \
 TexDB.h
 
+libglide3x_la_SOURCES = $(libglide2x_la_SOURCES)
+
 # We substitute the libtool-specific library version in configure.in.
-libglide2x_la_LDFLAGS = -no-undefined -version-info $(LIBVERSION) $(DLLFLAGS)
+libglide2x_la_LDFLAGS = -no-undefined -version-info $(LIBVERSION) $(X_LIBS) $(X_EXTRA_LIBS) $(DLLFLAGS_2)
+libglide3x_la_LDFLAGS = -no-undefined -version-info $(LIBVERSION) $(X_LIBS) $(X_EXTRA_LIBS) $(DLLFLAGS_3)
+
+INCLUDES=
 
 libglide2x_la_LIBADD = ./platform/linux/libplatform.la ./platform/sdl/libsdl.la ./platform/windows/libwindows.la
+libglide3x_la_LIBADD = $(libglide2x_la_LIBADD)
 
 install-data-hook:
-	cd $(DESTDIR)$(includedir) && \
-		$(LN_S) -f openglide/sdk2_glide.h glide.h
-
-install-exec-hook:
-	cd $(DESTDIR)$(libdir) && \
-		$(LN_S) -f libglide2x.so libglide.so.2
+	ln -sf $(libglide2xincludedir)/sdk2_glide.h $(DESTDIR)$(includedir)/glide.h
