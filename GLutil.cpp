@@ -126,20 +126,22 @@ void ConvertColor4B( GrColor_t GlideColor, FxU32 &C )
         break;
 
     case GR_COLORFORMAT_ABGR:   //0xAABBGGRR
-        C = ( ( GlideColor & 0xFF00FF00 ) ||
-              ( ( GlideColor & 0x00FF0000 ) >> 16 ) ||
+        C = ( ( GlideColor & 0xFF00FF00 ) |
+              ( ( GlideColor & 0x00FF0000 ) >> 16 ) |
               ( ( GlideColor & 0x000000FF ) <<  16 ) );
         break;
 
     case GR_COLORFORMAT_RGBA:   //0xRRGGBBAA
-        C = ( ( ( GlideColor & 0x00FFFFFF ) << 8 ) ||
-              ( ( GlideColor & 0xFF000000 ) >> 24 ) );
+        // Rotate right, not left -- the old left-rotate turned a black chroma
+        // key (0x000000FF) into green (0x0000FF00), matching no palette entry.
+        C = ( ( ( GlideColor & 0xFFFFFF00 ) >> 8 ) |
+              ( ( GlideColor & 0x000000FF ) << 24 ) );
         break;
 
     case GR_COLORFORMAT_BGRA:   //0xBBGGRRAA
-        C = ( ( ( GlideColor & 0xFF000000 ) >> 24 ) ||
-              ( ( GlideColor & 0x00FF0000 ) >>  8 ) ||
-              ( ( GlideColor & 0x0000FF00 ) <<  8 ) ||
+        C = ( ( ( GlideColor & 0xFF000000 ) >> 24 ) |
+              ( ( GlideColor & 0x00FF0000 ) >>  8 ) |
+              ( ( GlideColor & 0x0000FF00 ) <<  8 ) |
               ( ( GlideColor & 0x000000FF ) << 24 ) );
         break;
     }
