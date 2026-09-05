@@ -284,6 +284,7 @@ void GetOptions( void )
     UserConfig.Annotate                     = false;
 
     UserConfig.Resolution                   = 0;
+    UserConfig.WindowOffsetX                = 0;
 
     UserConfig.TextureMemorySize            = 16;
     UserConfig.FrameBufferMemorySize        = 8;
@@ -530,6 +531,14 @@ FX_ENTRY void FX_CALL setConfigRes(int res, void *swap12)
 {
     UserConfig.Resolution = 1.f * res;
     UserConfig.swap12 = swap12;
+}
+
+/* Centre the scaled Glide image inside a drawable that is wider than it. QEMU knows the
+ * drawable, OpenGLide only ever knew the game's own resolution.
+ */
+FX_ENTRY void FX_CALL setConfigOffset(int x, int y)
+{
+    UserConfig.WindowOffsetX = x;
 }
 
 bool ClearAndGenerateLogFile( void )

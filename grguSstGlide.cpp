@@ -302,6 +302,7 @@ grSstWinOpen(   FxU hwnd,
 
     Glide.WindowTotalPixels = Glide.WindowWidth * Glide.WindowHeight;
     OpenGL.WaitSignal = (int)( 1000 / OpenGL.Refresh );
+    OpenGL.WindowOffset = UserConfig.WindowOffsetX;
 
     // Initing OpenGL Window
     if ( !InitWindow( hwnd ) )

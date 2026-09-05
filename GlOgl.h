@@ -261,6 +261,7 @@ struct ConfigStruct
 
     float   Resolution;
     void    *swap12;
+    int     WindowOffsetX;
 
     bool    FogEnable;
     bool    InitFullScreen;
