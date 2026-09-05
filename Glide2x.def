@@ -130,3 +130,4 @@ _guTexSource@4 = guTexSource
 _setConfig@8 = setConfig
 _setConfigRes@8 = setConfigRes
 _setConfigOffset@8 = setConfigOffset
+_setConfigWindow@12 = setConfigWindow

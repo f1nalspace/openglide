@@ -541,6 +541,35 @@ FX_ENTRY void FX_CALL setConfigOffset(int x, int y)
     UserConfig.WindowOffsetX = x;
 }
 
+/* Resize the OpenGL window while a game is running -- the drawable changes size under
+ * OpenGLide when the host switches to full screen, and grSstWinOpen is long past by then.
+ * Called from the host's buffer swap, so a context is current and no LFB lock is open.
+ */
+FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x)
+{
+    if ( ( width <= 0 ) || ( height <= 0 ) || !OpenGL.oneBuf )
+    {
+        return;
+    }
+    if ( ( OpenGL.WindowWidth == width ) && ( OpenGL.WindowHeight == height ) &&
+         ( OpenGL.WindowOffset == offset_x ) )
+    {
+        return;
+    }
+
+    OpenGL.WindowWidth = width;
+    OpenGL.WindowHeight = height;
+    OpenGL.WindowOffset = offset_x;
+    OpenGL.WindowTotalPixels = (FxU32)( width * height );
+    UserConfig.WindowOffsetX = offset_x;
+    AllocateFrameBuffers( );
+
+    glViewport( offset_x, 0, width, height );
+    // recomputes the clip box from the game's own coordinates against the new size
+    grClipWindow( Glide.State.ClipMinX, Glide.State.ClipMinY,
+                  Glide.State.ClipMaxX, Glide.State.ClipMaxY );
+}
+
 bool ClearAndGenerateLogFile( void )
 {
     FILE    * GlideFile;

@@ -323,6 +323,7 @@ bool ClearAndGenerateLogFile( void );
 void CloseLogFile( void );
 bool InitWindow( FxU hWnd );
 void InitOpenGL( void );
+void AllocateFrameBuffers( void );
 void GetOptions( void );
 void InitMainVariables( void );
 

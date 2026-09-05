@@ -239,6 +239,30 @@ grSstQueryBoards( GrHwConfiguration *hwConfig )
 }
 
 //*************************************************
+//* The buffers the LFB paths read into are sized after the OpenGL window, so a window that
+//* grows at runtime -- which is what a switch to full screen does -- has to grow them with
+//* it. Shrinking keeps the larger buffer; only the addresses inside it move.
+//*************************************************
+void AllocateFrameBuffers( void )
+{
+#define PADDING         ((page_size << 2) - 1)
+#define PAGE_ALIGN(x)   ((((intptr_t)x) + page_size - 1) & page_mask)
+    static FxU32 allocatedPixels = 0;
+    intptr_t page_size = getpagesize();
+    intptr_t page_mask = ~(page_size - 1);
+
+    if ( !OpenGL.oneBuf || ( OpenGL.WindowTotalPixels > allocatedPixels ) )
+    {
+        delete[] OpenGL.oneBuf;
+        OpenGL.oneBuf = new char[ (OpenGL.WindowTotalPixels * 10) + PADDING ];
+        allocatedPixels = OpenGL.WindowTotalPixels;
+    }
+    OpenGL.tmpBuf = (FxU32 *)PAGE_ALIGN(OpenGL.oneBuf);
+    Glide.DstBuffer.Address = (FxU16 *)PAGE_ALIGN(OpenGL.tmpBuf + (OpenGL.WindowTotalPixels << 2));
+    Glide.SrcBuffer.Address = (FxU16 *)PAGE_ALIGN(Glide.DstBuffer.Address + (OpenGL.WindowTotalPixels << 2));
+}
+
+//*************************************************
 FX_ENTRY FxBool FX_CALL
 grSstWinOpen(   FxU hwnd,
                 GrScreenResolution_t res,
@@ -325,14 +349,7 @@ grSstWinOpen(   FxU hwnd,
     // Initializing Glide and OpenGL
     InitOpenGL( );
 
-#define PADDING         ((page_size << 2) - 1)
-#define PAGE_ALIGN(x)   ((((intptr_t)x) + page_size - 1) & page_mask)
-    intptr_t page_size = getpagesize();
-    intptr_t page_mask = ~(page_size - 1);
-    OpenGL.oneBuf = new char[ (OpenGL.WindowTotalPixels * 10) + PADDING ];
-    OpenGL.tmpBuf = (FxU32 *)PAGE_ALIGN(OpenGL.oneBuf);
-    Glide.DstBuffer.Address = (FxU16 *)PAGE_ALIGN(OpenGL.tmpBuf + (OpenGL.WindowTotalPixels << 2));
-    Glide.SrcBuffer.Address = (FxU16 *)PAGE_ALIGN(Glide.DstBuffer.Address + (OpenGL.WindowTotalPixels << 2));
+    AllocateFrameBuffers( );
     Glide.LFBTextureSize = 2 << int_log2(Glide.WindowWidth > Glide.WindowHeight ? (Glide.WindowWidth-1) : (Glide.WindowHeight-1));
 
     glGenTextures( 1, &Glide.LFBTexture );

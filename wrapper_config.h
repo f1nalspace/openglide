@@ -18,6 +18,7 @@ extern "C" {
 FX_ENTRY void FX_CALL setConfig(FxU32 flags, void *magic);
 FX_ENTRY void FX_CALL setConfigRes(int res, void *swap12);
 FX_ENTRY void FX_CALL setConfigOffset(int x, int y);
+FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x);
 
 #ifdef __cplusplus
 }
