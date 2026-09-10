@@ -59,19 +59,6 @@ grBufferClear( GrColor_t color, GrAlpha_t alpha, FxU16 depth )
         Bits |= GL_DEPTH_BUFFER_BIT;
     }
 
-    if ( OpenGL.ClearBorderFrames > 0 )
-    {
-        /* Black over everything, scissor off -- glClear ignores the viewport but obeys the
-         * scissor, and the scissored clear below deliberately spares the bars. */
-        GLfloat old_clear[4];
-        glGetFloatv( GL_COLOR_CLEAR_VALUE, old_clear );
-        glDisable( GL_SCISSOR_TEST );
-        glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
-        glClear( GL_COLOR_BUFFER_BIT );
-        glClearColor( old_clear[0], old_clear[1], old_clear[2], old_clear[3] );
-        OpenGL.ClearBorderFrames--;
-    }
-
     if ( ! OpenGL.Clipping )
     {
         if ( OpenGL.WindowOffset ) {
@@ -127,6 +114,25 @@ grBufferSwap( int swap_interval )
     annotate_stat();
 
     SwapBuffers( );
+
+    if ( OpenGL.ClearBorderFrames > 0 )
+    {
+        /* The bar beside a scaled image belongs to nobody: grBufferClear is deliberately
+         * kept inside the scissor so the game's clear colour cannot spill into it, and a
+         * game that draws its whole view never calls grBufferClear at all -- Unreal
+         * Tournament does not. Here is the one call every Glide game makes per frame, and
+         * right after the swap the new back buffer is undefined anyway.
+         * glClear ignores the viewport but obeys the scissor, so the scissor has to go.
+         */
+        GLfloat old_clear[4];
+        glGetFloatv( GL_COLOR_CLEAR_VALUE, old_clear );
+        glDisable( GL_SCISSOR_TEST );
+        glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
+        glClear( GL_COLOR_BUFFER_BIT );
+        glClearColor( old_clear[0], old_clear[1], old_clear[2], old_clear[3] );
+        OpenGL.ClearBorderFrames--;
+        fprintf( stderr, "openglide: Rand geloescht, noch %d Bild(er)\n", OpenGL.ClearBorderFrames );
+    }
 
 #ifdef OGL_DEBUG
     RDTSC( FinalTick );

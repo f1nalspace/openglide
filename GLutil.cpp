@@ -563,6 +563,7 @@ FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x)
     /* Both buffers of the double-buffered surface still hold the frame drawn at the old
      * size, and nothing else ever writes beside the image. */
     OpenGL.ClearBorderFrames = 2;
+    fprintf( stderr, "openglide: setConfigWindow %dx%d Versatz %d\n", width, height, offset_x );
     OpenGL.WindowTotalPixels = (FxU32)( width * height );
     UserConfig.WindowOffsetX = offset_x;
     AllocateFrameBuffers( );
