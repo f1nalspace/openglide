@@ -208,6 +208,10 @@ struct OpenGLStruct
     GLsizei                 WindowHeight;
     GLsizei                 WindowOffset;
     FxU32                   WindowTotalPixels;
+    /* Frames left in which the whole surface has to go black once. The per-frame clear is
+     * kept inside the scissor on purpose -- the game's clear colour must not spill into the
+     * bars -- so the bars would otherwise keep the previous, differently sized frame. */
+    int                     ClearBorderFrames;
     GLfloat                 Gamma;
     GLfloat                 AlphaReferenceValue;
     GLenum                  AlphaTestFunction;

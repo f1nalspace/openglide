@@ -59,6 +59,19 @@ grBufferClear( GrColor_t color, GrAlpha_t alpha, FxU16 depth )
         Bits |= GL_DEPTH_BUFFER_BIT;
     }
 
+    if ( OpenGL.ClearBorderFrames > 0 )
+    {
+        /* Black over everything, scissor off -- glClear ignores the viewport but obeys the
+         * scissor, and the scissored clear below deliberately spares the bars. */
+        GLfloat old_clear[4];
+        glGetFloatv( GL_COLOR_CLEAR_VALUE, old_clear );
+        glDisable( GL_SCISSOR_TEST );
+        glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
+        glClear( GL_COLOR_BUFFER_BIT );
+        glClearColor( old_clear[0], old_clear[1], old_clear[2], old_clear[3] );
+        OpenGL.ClearBorderFrames--;
+    }
+
     if ( ! OpenGL.Clipping )
     {
         if ( OpenGL.WindowOffset ) {
