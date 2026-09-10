@@ -38,7 +38,8 @@ static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &w
 
 static bool InterpretScreenRefresh(GrScreenRefresh_t eRefresh, GLuint &refresh)
 {
-    if ( eRefresh > GR_REFRESH_120Hz )
+    if (( eRefresh < GR_REFRESH_60Hz ) ||
+        ( eRefresh > GR_REFRESH_120Hz ))
         eRefresh = 0;
 
     static const GLuint windowRefresh[9] =
