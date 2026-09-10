@@ -238,53 +238,96 @@ ConvertAndDownloadRle( GrChipID_t        tmu,
         tmu, startAddress, thisLod, largeLod, aspectRatio, format, evenOdd, bm_h, u0, v0, width, height,
         dest_width, dest_height );
 #endif
-#if (SIZEOF_INT_P == 4)
-    FxU8 c, *texmem = new FxU8 [256 * 1024];
-    FxU32 scount = 0, dcount = 0, offset = 4 + bm_h;
-    FxU16 *tex = (FxU16 *)texmem, *src = tex + (dest_width * dest_height);
-    int j, k;
+    // A 3dfx RLE bitmap is a four byte header, one length byte per source line,
+    // then the encoded lines. Inside a line a byte above endOfLine starts a run
+    // of ( byte & runLengthMask ) palette entries and is followed by the entry,
+    // endOfLine ends the line, and any other byte is a single palette entry.
+    const FxU32 lineLengthTable = 4;
+    const FxU8  endOfLine       = 0xE0;
+    const FxU8  runLengthMask   = 0x1F;
 
-    if (!texmem)
+    if ( ( bm_data == NULL ) || ( tlut == NULL ) || ( bm_h <= 0 ) ||
+         ( dest_width == 0 ) || ( dest_height == 0 ) )
+    {
         return;
-    // Line offset (v0)
-    for (j = 0; j < v0; j++)
-        offset += bm_data[4 + j];
-    // Write height lines
-    for (k = 0; k < height; k++) {
-        // Decode one RLE line
-        scount = offset;
-        while((c = bm_data[scount]) != 0xE0U) {
-            if (c > 0xE0U) {
-                for (int count = 0; count < (c & 0x1FU); count++) {
-                    // tlut is FxU16*
-                    src[dcount] = tlut[bm_data[scount + 1]];
-                    dcount++;
+    }
+
+    const FxU32 sourceLines  = (FxU32) bm_h;
+    const FxU32 decodedWidth = u0 + dest_width;
+    FxU16 *texture     = new FxU16[ dest_width * dest_height ];
+    FxU16 *decodedLine = new FxU16[ decodedWidth ];
+    FxU32 sourceLine   = 0;
+    FxU32 lineOffset   = lineLengthTable + sourceLines;
+    FxU32 destLine;
+
+    memset( texture, 0, dest_width * dest_height * sizeof( FxU16 ) );
+    memset( decodedLine, 0, decodedWidth * sizeof( FxU16 ) );
+
+    for ( sourceLine = 0; ( sourceLine < v0 ) && ( sourceLine < sourceLines ); sourceLine++ )
+    {
+        lineOffset += bm_data[ lineLengthTable + sourceLine ];
+    }
+
+    for ( destLine = 0; ( destLine < height ) && ( destLine < dest_height ) &&
+                        ( sourceLine < sourceLines ); destLine++ )
+    {
+        const FxU32 lineEnd = lineOffset + bm_data[ lineLengthTable + sourceLine ];
+        FxU32 readPos  = lineOffset;
+        FxU32 writePos = 0;
+
+        while ( ( readPos < lineEnd ) && ( bm_data[ readPos ] != endOfLine ) )
+        {
+            const FxU8 token = bm_data[ readPos ];
+
+            if ( token > endOfLine )
+            {
+                // A run needs its palette entry, and that byte must still belong to this line.
+                if ( ( readPos + 1 ) >= lineEnd )
+                {
+                    break;
                 }
-                scount += 2;
+
+                const FxU32 runLength = token & runLengthMask;
+                const FxU16 color     = tlut[ bm_data[ readPos + 1 ] ];
+
+                for ( FxU32 run = 0; ( run < runLength ) && ( writePos < decodedWidth ); run++ )
+                {
+                    decodedLine[ writePos++ ] = color;
+                }
+                readPos += 2;
             }
-            else {
-                src[dcount] = tlut[c];
-                dcount++; scount++;
+            else
+            {
+                if ( writePos < decodedWidth )
+                {
+                    decodedLine[ writePos++ ] = tlut[ token ];
+                }
+                readPos++;
             }
         }
-        // Copy line into destination texture, offset u0
-        memcpy(tex + (k * dest_width), src + u0, dest_width * sizeof(FxU16));
-        offset += bm_data[4 + j++];
-        dcount = 0;
+
+        memcpy( texture + ( destLine * dest_width ), decodedLine + u0, dest_width * sizeof( FxU16 ) );
+
+        lineOffset += bm_data[ lineLengthTable + sourceLine ];
+        sourceLine++;
     }
-    // One additional line
-    if (height < dest_height)
-        memcpy(tex + (k * dest_width), src + u0, dest_width * sizeof(FxU16));
-    // Download decoded texture
+
+    // The source bitmap can be one line short of the destination texture.
+    for ( ; destLine < dest_height; destLine++ )
+    {
+        memcpy( texture + ( destLine * dest_width ), decodedLine + u0, dest_width * sizeof( FxU16 ) );
+    }
+
     GrTexInfo info;
-    info.smallLod = thisLod;
-    info.largeLod = largeLod;
+    info.smallLod    = thisLod;
+    info.largeLod    = largeLod;
     info.aspectRatio = aspectRatio;
-    info.format = format;
-    info.data = tex;
-    grTexDownloadMipMap(tmu, startAddress, evenOdd, &info);
-    delete[] texmem;
-#endif
+    info.format      = format;
+    info.data        = texture;
+    grTexDownloadMipMap( tmu, startAddress, evenOdd, &info );
+
+    delete[] decodedLine;
+    delete[] texture;
 }
 
 //*************************************************
