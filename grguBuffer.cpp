@@ -131,7 +131,7 @@ grBufferSwap( int swap_interval )
         glClear( GL_COLOR_BUFFER_BIT );
         glClearColor( old_clear[0], old_clear[1], old_clear[2], old_clear[3] );
         OpenGL.ClearBorderFrames--;
-        fprintf( stderr, "openglide: Rand geloescht, noch %d Bild(er)\n", OpenGL.ClearBorderFrames );
+        fprintf( stderr, "openglide: border cleared, %d frame(s) to go\n", OpenGL.ClearBorderFrames );
     }
 
 #ifdef OGL_DEBUG
