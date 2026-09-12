@@ -65,7 +65,7 @@ grDepthBufferMode( GrDepthBufferMode_t mode )
         glOrtho( Glide.State.ClipMinX, Glide.State.ClipMaxX, 
                  Glide.State.ClipMinY, Glide.State.ClipMaxY, 
                  OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( OpenGL.ClipMinX, OpenGL.ClipMinY,
+        glViewport( OpenGL.ClipMinX, OpenGL.WindowOffsetY + OpenGL.ClipMinY,
                     OpenGL.ClipMaxX - OpenGL.ClipMinX,
                     OpenGL.ClipMaxY - OpenGL.ClipMinY );
     }
@@ -74,7 +74,7 @@ grDepthBufferMode( GrDepthBufferMode_t mode )
         glOrtho( Glide.State.ClipMinX, Glide.State.ClipMaxX, 
                  Glide.State.ClipMaxY, Glide.State.ClipMinY, 
                  OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( OpenGL.ClipMinX, OpenGL.WindowHeight - OpenGL.ClipMaxY,
+        glViewport( OpenGL.ClipMinX, OpenGL.WindowOffsetY + OpenGL.WindowHeight - OpenGL.ClipMaxY,
                     OpenGL.ClipMaxX - OpenGL.ClipMinX,
                     OpenGL.ClipMaxY - OpenGL.ClipMinY );
     }

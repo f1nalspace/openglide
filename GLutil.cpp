@@ -285,6 +285,7 @@ void GetOptions( void )
 
     UserConfig.Resolution                   = 0;
     UserConfig.WindowOffsetX                = 0;
+    UserConfig.WindowOffsetY                = 0;
 
     UserConfig.TextureMemorySize            = 16;
     UserConfig.FrameBufferMemorySize        = 8;
@@ -438,7 +439,7 @@ static void drawstr(const char *str, const int colors)
     glDisable(GL_TEXTURE_2D);
 
     glEnable(GL_SCISSOR_TEST);
-    glScissor((OpenGL.WindowOffset+11), 6, 11 + (8 * strlen(str)), 14);
+    glScissor((OpenGL.WindowOffset+11), (OpenGL.WindowOffsetY+6), 11 + (8 * strlen(str)), 14);
     glClearColor(0.f, 0.f, 0.f, 0.f);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -533,26 +534,27 @@ FX_ENTRY void FX_CALL setConfigRes(int res, void *swap12)
     UserConfig.swap12 = swap12;
 }
 
-/* Centre the scaled Glide image inside a drawable that is wider than it. QEMU knows the
+/* Centre the scaled Glide image inside a drawable that is wider or taller than it. QEMU knows the
  * drawable, OpenGLide only ever knew the game's own resolution.
  */
 FX_ENTRY void FX_CALL setConfigOffset(int x, int y)
 {
     UserConfig.WindowOffsetX = x;
+    UserConfig.WindowOffsetY = y;
 }
 
 /* Resize the OpenGL window while a game is running -- the drawable changes size under
  * OpenGLide when the host switches to full screen, and grSstWinOpen is long past by then.
  * Called from the host's buffer swap, so a context is current and no LFB lock is open.
  */
-FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x)
+FX_ENTRY void FX_CALL setConfigWindowOffset(int width, int height, int offset_x, int offset_y)
 {
     if ( ( width <= 0 ) || ( height <= 0 ) || !OpenGL.oneBuf )
     {
         return;
     }
     if ( ( OpenGL.WindowWidth == width ) && ( OpenGL.WindowHeight == height ) &&
-         ( OpenGL.WindowOffset == offset_x ) )
+         ( OpenGL.WindowOffset == offset_x ) && ( OpenGL.WindowOffsetY == offset_y ) )
     {
         return;
     }
@@ -560,18 +562,26 @@ FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x)
     OpenGL.WindowWidth = width;
     OpenGL.WindowHeight = height;
     OpenGL.WindowOffset = offset_x;
+    OpenGL.WindowOffsetY = offset_y;
     /* Both buffers of the double-buffered surface still hold the frame drawn at the old
      * size, and nothing else ever writes beside the image. */
     OpenGL.ClearBorderFrames = 2;
-    fprintf( stderr, "openglide: setConfigWindow %dx%d Versatz %d\n", width, height, offset_x );
+    fprintf( stderr, "openglide: setConfigWindow %dx%d offset %d,%d\n", width, height, offset_x, offset_y );
     OpenGL.WindowTotalPixels = (FxU32)( width * height );
     UserConfig.WindowOffsetX = offset_x;
+    UserConfig.WindowOffsetY = offset_y;
     AllocateFrameBuffers( );
 
-    glViewport( offset_x, 0, width, height );
+    glViewport( offset_x, offset_y, width, height );
     // recomputes the clip box from the game's own coordinates against the new size
     grClipWindow( Glide.State.ClipMinX, Glide.State.ClipMinY,
                   Glide.State.ClipMaxX, Glide.State.ClipMaxY );
+}
+
+/* The same without a vertical offset, for a QEMU that does not know setConfigWindowOffset. */
+FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x)
+{
+    setConfigWindowOffset( width, height, offset_x, 0 );
 }
 
 bool ClearAndGenerateLogFile( void )

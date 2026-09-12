@@ -328,6 +328,7 @@ grSstWinOpen(   FxU hwnd,
     Glide.WindowTotalPixels = Glide.WindowWidth * Glide.WindowHeight;
     OpenGL.WaitSignal = (int)( 1000 / OpenGL.Refresh );
     OpenGL.WindowOffset = UserConfig.WindowOffsetX;
+    OpenGL.WindowOffsetY = UserConfig.WindowOffsetY;
 
     // Initing OpenGL Window
     if ( !InitWindow( hwnd ) )
@@ -472,6 +473,7 @@ grSstWinClose( void )
 
     UserConfig.Resolution = InternalConfig.Resolution;
     OpenGL.WindowOffset = 0;
+    OpenGL.WindowOffsetY = 0;
     OpenGL.WinOpen = false;
 
     annotate_last();
@@ -603,7 +605,7 @@ grSstOrigin( GrOriginLocation_t  origin )
         glMatrixMode( GL_PROJECTION );
         glLoadIdentity( );
         glOrtho( 0, Glide.WindowWidth, 0, Glide.WindowHeight, OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
+        glViewport( OpenGL.WindowOffset, OpenGL.WindowOffsetY, OpenGL.WindowWidth, OpenGL.WindowHeight );
         glMatrixMode( GL_MODELVIEW );
         break;
 
@@ -611,7 +613,7 @@ grSstOrigin( GrOriginLocation_t  origin )
         glMatrixMode( GL_PROJECTION );
         glLoadIdentity( );
         glOrtho( 0, Glide.WindowWidth, Glide.WindowHeight, 0, OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight );
+        glViewport( OpenGL.WindowOffset, OpenGL.WindowOffsetY, OpenGL.WindowWidth, OpenGL.WindowHeight );
         glMatrixMode( GL_MODELVIEW );
         break;
     }

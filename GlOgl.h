@@ -207,6 +207,7 @@ struct OpenGLStruct
     GLsizei                 WindowWidth;
     GLsizei                 WindowHeight;
     GLsizei                 WindowOffset;
+    GLsizei                 WindowOffsetY;
     FxU32                   WindowTotalPixels;
     /* Frames left in which the whole surface has to go black once. The per-frame clear is
      * kept inside the scissor on purpose -- the game's clear colour must not spill into the
@@ -266,6 +267,7 @@ struct ConfigStruct
     float   Resolution;
     void    *swap12;
     int     WindowOffsetX;
+    int     WindowOffsetY;
 
     bool    FogEnable;
     bool    InitFullScreen;

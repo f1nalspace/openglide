@@ -128,11 +128,11 @@ grClipWindow( FxU32 minx, FxU32 miny, FxU32 maxx, FxU32 maxy )
         glOrtho( Glide.State.ClipMinX, Glide.State.ClipMaxX, 
                  Glide.State.ClipMinY, Glide.State.ClipMaxY, 
                  OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( OpenGL.ClipMinX, OpenGL.ClipMinY,
+        glViewport( OpenGL.ClipMinX, OpenGL.WindowOffsetY + OpenGL.ClipMinY,
                     OpenGL.ClipMaxX - OpenGL.ClipMinX,
                     OpenGL.ClipMaxY - OpenGL.ClipMinY );
         // Used for the buffer clearing
-        glScissor( OpenGL.ClipMinX, OpenGL.ClipMinY,
+        glScissor( OpenGL.ClipMinX, OpenGL.WindowOffsetY + OpenGL.ClipMinY,
                    OpenGL.ClipMaxX - OpenGL.ClipMinX,
                    OpenGL.ClipMaxY - OpenGL.ClipMinY );
     }
@@ -141,11 +141,11 @@ grClipWindow( FxU32 minx, FxU32 miny, FxU32 maxx, FxU32 maxy )
         glOrtho( Glide.State.ClipMinX, Glide.State.ClipMaxX, 
                  Glide.State.ClipMaxY, Glide.State.ClipMinY, 
                  OpenGL.ZNear, OpenGL.ZFar );
-        glViewport( OpenGL.ClipMinX, OpenGL.WindowHeight - OpenGL.ClipMaxY,
+        glViewport( OpenGL.ClipMinX, OpenGL.WindowOffsetY + OpenGL.WindowHeight - OpenGL.ClipMaxY,
                     OpenGL.ClipMaxX - OpenGL.ClipMinX,
                     OpenGL.ClipMaxY - OpenGL.ClipMinY );
         // Used for the buffer clearing
-        glScissor( OpenGL.ClipMinX, OpenGL.WindowHeight - OpenGL.ClipMaxY,
+        glScissor( OpenGL.ClipMinX, OpenGL.WindowOffsetY + OpenGL.WindowHeight - OpenGL.ClipMaxY,
                    OpenGL.ClipMaxX - OpenGL.ClipMinX,
                    OpenGL.ClipMaxY - OpenGL.ClipMinY );
     }

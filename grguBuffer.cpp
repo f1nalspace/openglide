@@ -61,12 +61,13 @@ grBufferClear( GrColor_t color, GrAlpha_t alpha, FxU16 depth )
 
     if ( ! OpenGL.Clipping )
     {
-        if ( OpenGL.WindowOffset ) {
-            glScissor(OpenGL.WindowOffset, 0, OpenGL.WindowWidth, OpenGL.WindowHeight);
+        const bool image_is_offset = ( OpenGL.WindowOffset != 0 ) || ( OpenGL.WindowOffsetY != 0 );
+        if ( image_is_offset ) {
+            glScissor(OpenGL.WindowOffset, OpenGL.WindowOffsetY, OpenGL.WindowWidth, OpenGL.WindowHeight);
             glEnable( GL_SCISSOR_TEST );
         }
         glClear( Bits );
-        if ( OpenGL.WindowOffset )
+        if ( image_is_offset )
             glDisable( GL_SCISSOR_TEST );
     }
     else
