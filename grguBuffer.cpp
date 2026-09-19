@@ -114,6 +114,11 @@ grBufferSwap( int swap_interval )
 
     annotate_stat();
 
+    if ( UserConfig.PresentHook )
+    {
+        UserConfig.PresentHook( );
+    }
+
     SwapBuffers( );
 
     if ( OpenGL.ClearBorderFrames > 0 )

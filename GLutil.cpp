@@ -284,6 +284,7 @@ void GetOptions( void )
     UserConfig.Annotate                     = false;
 
     UserConfig.Resolution                   = 0;
+    UserConfig.PresentHook                  = NULL;
     UserConfig.WindowOffsetX                = 0;
     UserConfig.WindowOffsetY                = 0;
 
@@ -582,6 +583,14 @@ FX_ENTRY void FX_CALL setConfigWindowOffset(int width, int height, int offset_x,
 FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x)
 {
     setConfigWindowOffset( width, height, offset_x, 0 );
+}
+
+/* Called in grBufferSwap once the frame is complete and right before the swap, with the context current.
+ * QEMU draws its frame rate overlay there; NULL takes the hook away again.
+ */
+FX_ENTRY void FX_CALL setConfigPresentHook(void (*present_hook)(void))
+{
+    UserConfig.PresentHook = present_hook;
 }
 
 bool ClearAndGenerateLogFile( void )

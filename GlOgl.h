@@ -266,6 +266,7 @@ struct ConfigStruct
 
     float   Resolution;
     void    *swap12;
+    void    (*PresentHook)(void);
     int     WindowOffsetX;
     int     WindowOffsetY;
 

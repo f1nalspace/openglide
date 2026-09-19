@@ -20,6 +20,7 @@ FX_ENTRY void FX_CALL setConfigRes(int res, void *swap12);
 FX_ENTRY void FX_CALL setConfigOffset(int x, int y);
 FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x);
 FX_ENTRY void FX_CALL setConfigWindowOffset(int width, int height, int offset_x, int offset_y);
+FX_ENTRY void FX_CALL setConfigPresentHook(void (*present_hook)(void));
 
 #ifdef __cplusplus
 }
