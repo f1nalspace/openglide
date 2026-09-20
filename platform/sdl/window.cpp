@@ -80,7 +80,7 @@ static bool ramp_stored;
  * the Glide half of it and deliberately uses the very same switch, so that one
  * setting covers both paths:
  *
- *     QEMU_3DFX_HOST_GAMMA=1
+ *     FVM3DX_HOST_GAMMA=1
  *
  * Second point: what the guest asked for is remembered, so a game reading its ramp
  * back gets its own values even though the host screen was never touched. Note that
@@ -95,7 +95,7 @@ static int HostGammaPassthroughEnabled(void)
     static int alreadyChecked, isEnabled;
 
     if (!alreadyChecked) {
-        const char *setting = getenv("QEMU_3DFX_HOST_GAMMA");
+        const char *setting = getenv("FVM3DX_HOST_GAMMA");
         isEnabled = (setting && (setting[0] == '1'))? 1:0;
         alreadyChecked = 1;
     }

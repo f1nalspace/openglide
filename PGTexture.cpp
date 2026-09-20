@@ -23,7 +23,7 @@
 //* Diagnostics: which texture formats, palettes and pipeline
 //* states does a game actually use?
 //*
-//* Switched on with QEMU_3DFX_TEXLOG=1, writes OpenGLid.tex. Only
+//* Switched on with FVM3DX_TEXLOG=1, writes OpenGLid.tex. Only
 //* distinct records are kept, each with the number of times it was
 //* seen, and the file is rewritten whenever a new one shows up --
 //* so the findings survive a game that crashes.
@@ -39,7 +39,7 @@ static char  texdiag_record[ TEXDIAG_MAX_RECORDS ][ TEXDIAG_MAX_LENGTH ];
 static FxU32 texdiag_count[ TEXDIAG_MAX_RECORDS ];
 static int   texdiag_records       = 0;
 
-// Probe: with QEMU_3DFX_KEYMARK=1 the chroma-keyed palette entries do not become
+// Probe: with FVM3DX_KEYMARK=1 the chroma-keyed palette entries do not become
 // transparent but opaque magenta. Whatever turns magenta on screen was keyed out
 // by the palette -- everything that stays as it was comes from somewhere else.
 static bool texdiag_keymark_known = false;
@@ -49,7 +49,7 @@ static bool TexDiagKeyMark( void )
 {
     if ( ! texdiag_keymark_known )
     {
-        const char * setting = getenv( "QEMU_3DFX_KEYMARK" );
+        const char * setting = getenv( "FVM3DX_KEYMARK" );
 
         texdiag_keymark = ( setting != NULL ) && ( setting[ 0 ] != '0' );
         texdiag_keymark_known = true;
@@ -62,7 +62,7 @@ static bool TexDiagEnabled( void )
 {
     if ( ! texdiag_enabled_known )
     {
-        const char * setting = getenv( "QEMU_3DFX_TEXLOG" );
+        const char * setting = getenv( "FVM3DX_TEXLOG" );
 
         texdiag_enabled = ( setting != NULL ) && ( setting[ 0 ] != '0' );
         texdiag_enabled_known = true;

@@ -407,7 +407,7 @@ void FinaliseOpenGLWindow(void)
  * The Mesa half was fixed in qemu-3dfx commit 5664fbc. This is the Glide half, and it
  * deliberately uses the very same switch so that one setting covers both paths:
  *
- *     QEMU_3DFX_HOST_GAMMA=1
+ *     FVM3DX_HOST_GAMMA=1
  *
  * With the switch off, this file never writes the screen's ramp at all -- neither the
  * guest's ramp, nor a restored one. Reading it back still returns the host's real
@@ -418,7 +418,7 @@ static int HostGammaPassthroughEnabled(void)
     static int alreadyChecked, isEnabled;
 
     if (!alreadyChecked) {
-        const char *setting = getenv("QEMU_3DFX_HOST_GAMMA");
+        const char *setting = getenv("FVM3DX_HOST_GAMMA");
         isEnabled = (setting && (setting[0] == '1'))? 1:0;
         alreadyChecked = 1;
     }
