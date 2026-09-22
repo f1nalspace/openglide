@@ -518,6 +518,7 @@ grSstWinClose( void )
 
     glDeleteTextures(1, &Glide.LFBTexture);
     delete[] OpenGL.oneBuf;
+    OpenGL.oneBuf = NULL;
 
     FinaliseOpenGLWindow( );
 }
