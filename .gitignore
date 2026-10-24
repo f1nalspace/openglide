@@ -26,7 +26,7 @@ Makefile
 Makefile.in
 /stamp-h1
 
-# Out-of-tree build directory used for the host build (see docs/anleitung.md 4.3)
+# Out-of-tree build directory used for the host build
 /build/
 
 # Compiled Object files

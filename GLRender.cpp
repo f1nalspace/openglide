@@ -220,7 +220,7 @@ void RenderDrawTriangles( void )
         // this it only worked for GR_BLEND_ONE/GR_BLEND_ZERO -- and Diablo II
         // draws its menu text with GR_BLEND_ZERO/GR_BLEND_SRC_COLOR, a multiply
         // in which a black texel with alpha 0 blackens the pixel underneath.
-        // That was the black box behind the button text. See docs/LOG.md.
+        // That was the black box behind the button text.
         bool chromaKeyAlphaTest = ( Glide.State.ChromaKeyMode != 0 );
 
         if ( chromaKeyAlphaTest )

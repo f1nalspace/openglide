@@ -401,8 +401,8 @@ void FinaliseOpenGLWindow(void)
  * XF86VidModeSetGammaRamp programs the whole X screen -- the source says as much a
  * few lines below ("This affects all windows"). A guest game dimming itself dims the
  * user's desktop with it, and the ramp stays that way when the game does not exit
- * cleanly. That is how the host display was lost in docs/LOG.md [234], and it is the
- * same failure that docs/LOG.md [158]-[164] described for the Mesa path.
+ * cleanly. That is how the host display was lost once, and it is the
+ * same failure the Mesa path had.
  *
  * The Mesa half was fixed in qemu-3dfx commit 5664fbc. This is the Glide half, and it
  * deliberately uses the very same switch so that one setting covers both paths:

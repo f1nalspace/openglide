@@ -137,7 +137,7 @@ void ConvertColor4B( GrColor_t GlideColor, FxU32 &C )
         // in bits 16..23, alpha sits in the bottom byte and belongs in the top
         // one. The old line rotated the other way, which turned Diablo II's
         // black chroma key 0x000000FF into a green 0x0000FF00 -- a colour that
-        // is in no palette, so nothing was ever keyed out. See docs/LOG.md.
+        // is in no palette, so nothing was ever keyed out.
         C = ( ( ( GlideColor & 0xFFFFFF00 ) >> 8 ) |
               ( ( GlideColor & 0x000000FF ) << 24 ) );
         break;

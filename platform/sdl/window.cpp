@@ -74,7 +74,7 @@ static bool ramp_stored;
  * Despite its name, SDL_SetWindowGammaRamp is not per window on X11 -- it programs
  * the CRTC, so a guest game dimming itself dims the whole desktop. Worse, the ramp
  * stays that way when the game does not exit cleanly, and the user is left with an
- * unreadable screen. That is how the host display was lost in docs/LOG.md [234].
+ * unreadable screen. That is how the host display was lost once.
  *
  * The same failure was fixed for the Mesa path in qemu-3dfx commit 5664fbc. This is
  * the Glide half of it and deliberately uses the very same switch, so that one
