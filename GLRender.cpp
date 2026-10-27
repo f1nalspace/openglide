@@ -169,17 +169,14 @@ void RenderDrawTriangles( void )
         glDisable( GL_BLEND );
     }
 
-    // Alpha Fix
-    if ( Glide.State.AlphaOther != GR_COMBINE_OTHER_TEXTURE )
+    // A Voodoo tests the combined alpha whatever its source; the test used to be dropped unless the alpha came from the texture.
+    if ( Glide.State.AlphaTestFunction != GR_CMP_ALWAYS )
+    {
+        glEnable( GL_ALPHA_TEST );
+    }
+    else
     {
         glDisable( GL_ALPHA_TEST );
-    }
-    else 
-    {
-        if ( Glide.State.AlphaTestFunction != GR_CMP_ALWAYS )
-        {
-            glEnable( GL_ALPHA_TEST );
-        }
     }
     
     if( !OpenGL.Blend && Glide.State.ChromaKeyMode )
@@ -1214,17 +1211,14 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
         glDisable( GL_BLEND );
     }
 
-    // Alpha Fix
-    if ( Glide.State.AlphaOther != GR_COMBINE_OTHER_TEXTURE )
+    // A Voodoo tests the combined alpha whatever its source; the test used to be dropped unless the alpha came from the texture.
+    if ( Glide.State.AlphaTestFunction != GR_CMP_ALWAYS )
+    {
+        glEnable( GL_ALPHA_TEST );
+    }
+    else
     {
         glDisable( GL_ALPHA_TEST );
-    }
-    else 
-    {
-        if ( Glide.State.AlphaTestFunction != GR_CMP_ALWAYS )
-        {
-            glEnable( GL_ALPHA_TEST );
-        }
     }
     
     glBegin( GL_LINES );
@@ -1590,17 +1584,14 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
         glDisable( GL_BLEND );
     }
 
-    // Alpha Fix
-    if ( Glide.State.AlphaOther != GR_COMBINE_OTHER_TEXTURE )
+    // A Voodoo tests the combined alpha whatever its source; the test used to be dropped unless the alpha came from the texture.
+    if ( Glide.State.AlphaTestFunction != GR_CMP_ALWAYS )
+    {
+        glEnable( GL_ALPHA_TEST );
+    }
+    else
     {
         glDisable( GL_ALPHA_TEST );
-    }
-    else 
-    {
-        if ( Glide.State.AlphaTestFunction != GR_CMP_ALWAYS )
-        {
-            glEnable( GL_ALPHA_TEST );
-        }
     }
     
     glBegin( GL_POINTS );
