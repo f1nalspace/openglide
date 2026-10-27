@@ -11,6 +11,10 @@
 #define WRAPPER_FLAG_VSYNCOFF               (0x40)
 #define WRAPPER_FLAG_QEMU                   (0x80)
 
+/* The severity setConfigMessages hands over with every message. */
+#define WRAPPER_MESSAGE_INFO                (0)
+#define WRAPPER_MESSAGE_ERROR               (1)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,6 +25,7 @@ FX_ENTRY void FX_CALL setConfigOffset(int x, int y);
 FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x);
 FX_ENTRY void FX_CALL setConfigWindowOffset(int width, int height, int offset_x, int offset_y);
 FX_ENTRY void FX_CALL setConfigPresentHook(void (*present_hook)(void));
+FX_ENTRY void FX_CALL setConfigMessages(void (*messages)(int severity, const char *text));
 
 #ifdef __cplusplus
 }

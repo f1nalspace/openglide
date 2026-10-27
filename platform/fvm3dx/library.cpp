@@ -12,26 +12,17 @@
 
 #ifdef C_USE_FVM3DX
 
-#include <stdio.h>
-
 #include "GlOgl.h"
 
-// QEMU loads the library: without a log file OpenGLide still works, so it never ends the process the way the Linux platform does.
+// QEMU loads the library. Messages go to the device through setConfigMessages, so there is no log file to fail on. The device shuts
+// Glide down itself while the guest's context is still current: at QEMU's exit no context is, and the GL calls of grGlideShutdown would go nowhere.
 class InitLibrary
 {
 public:
     InitLibrary( )
     {
-        if ( !ClearAndGenerateLogFile( ) )
-        {
-            fprintf( stderr, "openglide: cannot write %s in the working directory, going on without it\n", GLIDEFILE );
-        }
+        ClearAndGenerateLogFile( );
         InitMainVariables( );
-    }
-    ~InitLibrary( )
-    {
-        grGlideShutdown( );
-        CloseLogFile( );
     }
 };
 

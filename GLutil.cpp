@@ -34,11 +34,32 @@ extern unsigned long    NumberOfErrors;
 
 // Functions
 
+#ifdef C_USE_FVM3DX
+// Inside QEMU the messages go to the device's log; OpenGLide writes no file into QEMU's working directory.
+static void ( *MessageCallback )( int severity, const char *text );
+
+static void SendMessage( int severity, const char *szString, va_list Arg )
+{
+    if ( !MessageCallback )
+    {
+        return;
+    }
+    char text[ 512 ];
+    vsnprintf( text, sizeof( text ), szString, Arg );
+    MessageCallback( severity, text );
+}
+#endif
+
 VARARGDECL(void) GlideMsg( const char *szString, ... )
 {
     va_list( Arg );
     va_start( Arg, szString );
 
+#ifdef C_USE_FVM3DX
+    SendMessage( WRAPPER_MESSAGE_INFO, szString, Arg );
+    va_end( Arg );
+    return;
+#endif
     FILE *fHandle = fopen( GLIDEFILE, "at" );
     if ( !fHandle )
     {
@@ -56,6 +77,12 @@ VARARGDECL(void) Error( const char *szString, ... )
     va_list( Arg );
     va_start( Arg, szString );
 
+#ifdef C_USE_FVM3DX
+    SendMessage( WRAPPER_MESSAGE_ERROR, szString, Arg );
+    va_end( Arg );
+    NumberOfErrors++;
+    return;
+#endif
     if ( NumberOfErrors == 0 )
     {
         GenerateErrorFile( );
@@ -298,6 +325,13 @@ void GetOptions( void )
     UserConfig.NoSplash                     = true;
     UserConfig.ShamelessPlug                = false;
 
+#ifdef C_USE_FVM3DX
+    // The device sets what it wants through setConfig*; an ini file in QEMU's working directory would apply to every guest.
+    (void)IniFile;
+    (void)Pointer;
+    (void)Path;
+    return;
+#endif
     strcpy( Path, INIFILE );
 
     GlideMsg( "Configuration file is %s\n", Path );
@@ -593,11 +627,29 @@ FX_ENTRY void FX_CALL setConfigPresentHook(void (*present_hook)(void))
     UserConfig.PresentHook = present_hook;
 }
 
+/* Where OpenGLide's messages go inside QEMU, with their severity (WRAPPER_MESSAGE_*); NULL drops them. Kept across grGlideInit,
+ * which resets the rest of the configuration.
+ */
+FX_ENTRY void FX_CALL setConfigMessages(void (*messages)(int severity, const char *text))
+{
+#ifdef C_USE_FVM3DX
+    MessageCallback = messages;
+#else
+    (void)messages;
+#endif
+}
+
 bool ClearAndGenerateLogFile( void )
 {
     FILE    * GlideFile;
     char    tmpbuf[ 128 ];
 
+#ifdef C_USE_FVM3DX
+    (void)GlideFile;
+    (void)tmpbuf;
+    ClockFreq = ClockFrequency( );
+    return true;
+#endif
     remove( ERRORFILE );
     GlideFile = fopen( GLIDEFILE, "w" );
     if ( ! GlideFile )

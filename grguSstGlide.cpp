@@ -4,6 +4,7 @@
 #include "GLRender.h"
 #include "PGTexture.h"
 #include "OGLTables.h"
+#include <new>
 
 static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &width, FxU32 &height)
 {
@@ -255,8 +256,15 @@ void AllocateFrameBuffers( void )
     if ( !OpenGL.oneBuf || ( OpenGL.WindowTotalPixels > allocatedPixels ) )
     {
         delete[] OpenGL.oneBuf;
-        OpenGL.oneBuf = new char[ (OpenGL.WindowTotalPixels * 10) + PADDING ];
-        allocatedPixels = OpenGL.WindowTotalPixels;
+        OpenGL.oneBuf = new ( std::nothrow ) char[ (OpenGL.WindowTotalPixels * 10) + PADDING ];
+        allocatedPixels = OpenGL.oneBuf ? OpenGL.WindowTotalPixels : 0;
+    }
+    if ( !OpenGL.oneBuf )
+    {
+        OpenGL.tmpBuf = NULL;
+        Glide.DstBuffer.Address = NULL;
+        Glide.SrcBuffer.Address = NULL;
+        return;
     }
     OpenGL.tmpBuf = (FxU32 *)PAGE_ALIGN(OpenGL.oneBuf);
     Glide.DstBuffer.Address = (FxU16 *)PAGE_ALIGN(OpenGL.tmpBuf + (OpenGL.WindowTotalPixels << 2));
@@ -352,6 +360,13 @@ grSstWinOpen(   FxU hwnd,
     InitOpenGL( );
 
     AllocateFrameBuffers( );
+    // A host process such as QEMU outlives a game that asked for too much: the window stays closed instead of the process ending.
+    if ( ( !Glide.SrcBuffer.Address ) || ( !Glide.DstBuffer.Address ) || ( !OpenGL.tmpBuf ) )
+    {
+        Error( "Could NOT allocate sufficient memory for Buffers... Sorry\n" );
+        FinaliseOpenGLWindow( );
+        return FXFALSE;
+    }
     Glide.LFBTextureSize = 2 << int_log2(Glide.WindowWidth > Glide.WindowHeight ? (Glide.WindowWidth-1) : (Glide.WindowHeight-1));
 
     glGenTextures( 1, &Glide.LFBTexture );
@@ -367,13 +382,6 @@ grSstWinOpen(   FxU hwnd,
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
     glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA, Glide.LFBTextureSize, Glide.LFBTextureSize, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL );
     glBindTexture( GL_TEXTURE_2D, 0 );
-
-    // Just checking
-    if ( ( !Glide.SrcBuffer.Address ) || ( !Glide.DstBuffer.Address ) || ( !OpenGL.tmpBuf ) )
-    {
-        Error( "Could NOT allocate sufficient memory for Buffers... Sorry\n" );
-        exit( -1 );
-    }
 
     ZeroMemory( Glide.SrcBuffer.Address, Glide.WindowTotalPixels * 2 );
 
