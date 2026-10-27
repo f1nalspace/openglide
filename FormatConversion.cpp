@@ -6,14 +6,47 @@
 #   endif
 #endif
 
+// A Voodoo widens a channel to 8 bits by repeating its top bits, so that full intensity stays 0xFF.
+static inline FxU32 Widen5To8( FxU32 value )
+{
+    return ( value << 3 ) | ( value >> 2 );
+}
+
+static inline FxU32 Widen6To8( FxU32 value )
+{
+    return ( value << 2 ) | ( value >> 4 );
+}
+
+static inline FxU32 Widen3To8( FxU32 value )
+{
+    return ( value << 5 ) | ( value << 2 ) | ( value >> 1 );
+}
+
+static inline FxU32 Widen2To8( FxU32 value )
+{
+    return value * 0x55;
+}
+
+static inline FxU32 Widen4To8( FxU32 value )
+{
+    return value * 0x11;
+}
+
+// 565 as RGB in the low three bytes, R first.
+static inline FxU32 Widen565( FxU32 texel )
+{
+    FxU32 red = Widen5To8( ( texel >> 11 ) & 0x1F );
+    FxU32 green = Widen6To8( ( texel >> 5 ) & 0x3F );
+    FxU32 blue = Widen5To8( texel & 0x1F );
+    return ( blue << 16 ) | ( green << 8 ) | red;
+}
+
 void Convert565Kto8888( FxU16 *Buffer1, FxU16 key, FxU32 *Buffer2, FxU32 Pixels )
 {
     while ( Pixels )
     {
-        *Buffer2 = ( ( (*Buffer1) == key) ? 0x00000000 : 0xFF000000 ) |   // A
-                     ( (*Buffer1)    & 0x001F ) << 19 |                   // B
-                     ( (*Buffer1)    & 0x07E0 ) << 5  |                   // G
-                     ( (*Buffer1)    & 0xF800 ) >> 8;                     // R
+        FxU32 alpha = ( (*Buffer1) == key ) ? 0x00000000 : 0xFF000000;
+        *Buffer2 = alpha | Widen565( *Buffer1 );
         Buffer2++;
         Buffer1++;
         Pixels--;
@@ -93,10 +126,7 @@ void Convert565to8888( FxU16 *Buffer1, FxU32 *Buffer2, FxU32 Pixels )
 {
    while ( Pixels )
    {
-      *Buffer2 = 0xFF000000 |              // A
-         ( (*Buffer1)  & 0x001F ) << 19 |  // B
-         ( (*Buffer1)  & 0x07E0 ) << 5  |  // G
-         ( (*Buffer1)  & 0xF800 ) >> 8;    // R
+      *Buffer2 = 0xFF000000 | Widen565( *Buffer1 );
       Buffer2++;
       Buffer1++;
       Pixels--;
@@ -127,9 +157,9 @@ void Convert8332to8888( FxU16 *Buffer1, FxU32 *Buffer2, FxU32 Pixels )
     for ( FxU32 i = Pixels; i > 0; i-- )
     {
         A = ( ( ( *Buffer1 ) >> 8 ) & 0xFF );
-        R = ( ( ( *Buffer1 ) >> 5 ) & 0x07 ) << 5;
-        G = ( ( ( *Buffer1 ) >> 2 ) & 0x07 ) << 5;
-        B = (   ( *Buffer1 ) & 0x03 ) << 6;
+        R = Widen3To8( ( ( *Buffer1 ) >> 5 ) & 0x07 );
+        G = Widen3To8( ( ( *Buffer1 ) >> 2 ) & 0x07 );
+        B = Widen2To8( ( *Buffer1 ) & 0x03 );
         *Buffer2 = ( A << 24 ) | ( B << 16 ) | ( G << 8 ) | R;
         Buffer1++;
         Buffer2++;
@@ -148,7 +178,9 @@ void ConvertAI44toAP88( FxU8 *Buffer1, FxU16 *Buffer2, FxU32 Pixels )
 {
     for ( FxU32 i = Pixels; i > 0; i-- )
     {
-        *Buffer2 = ( ( ( ( *Buffer1 ) & 0xF0 ) << 8 ) | ( ( ( *Buffer1 ) & 0x0F ) << 4 ) );
+        FxU32 alpha = Widen4To8( ( *Buffer1 ) >> 4 );
+        FxU32 intensity = Widen4To8( ( *Buffer1 ) & 0x0F );
+        *Buffer2 = (FxU16)( ( alpha << 8 ) | intensity );
         Buffer2++;
         Buffer1++;
     }
@@ -170,9 +202,10 @@ void ConvertAP88to8888( FxU16 *Buffer1, FxU32 *Buffer2, FxU32 Pixels, FxU32 *pal
 
 void ConvertYIQto8888( FxU8 *in, FxU32 *out, FxU32 Pixels, GuNccTable *ncc )
 {
-    FxU32  R;
-    FxU32  G;
-    FxU32  B;
+    // Signed: I and Q are negative, and a negative sum has to clamp to 0.
+    FxI32  R;
+    FxI32  G;
+    FxI32  B;
 
     for ( FxU32 i = Pixels; i > 0; i-- )
     {
@@ -198,9 +231,10 @@ void ConvertYIQto8888( FxU8 *in, FxU32 *out, FxU32 Pixels, GuNccTable *ncc )
 
 void ConvertAYIQto8888( FxU16 *in, FxU32 *out, FxU32 Pixels, GuNccTable *ncc)
 {
-    FxU32  R;
-    FxU32  G;
-    FxU32  B;
+    // Signed: I and Q are negative, and a negative sum has to clamp to 0.
+    FxI32  R;
+    FxI32  G;
+    FxI32  B;
 
     for ( FxU32 i = Pixels; i > 0; i-- )
     {
