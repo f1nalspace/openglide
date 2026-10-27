@@ -52,6 +52,15 @@ AC_SEARCH_LIBS([clock_gettime], [rt pthread] , ,)
 AH_TEMPLATE(C_USE_SDL,[Define to use SDL library])
 AC_ARG_ENABLE(sdl,AC_HELP_STRING([--disable-sdl],[Disable SDL support]),,disable_sdl=no)
 
+dnl fvm3dx: no window of its own, the device makes its EGL context current
+AH_TEMPLATE(C_USE_FVM3DX,[Define to draw into the EGL context the fvm3dx device makes current])
+AC_ARG_ENABLE(fvm3dx,AC_HELP_STRING([--enable-fvm3dx],[Draw into the current EGL context of the fvm3dx device, without SDL or X11]),,enable_fvm3dx=no)
+if test x$enable_fvm3dx = xyes ; then
+    AC_DEFINE(C_USE_FVM3DX)
+    disable_sdl=yes
+    LIBS="$LIBS -lEGL"
+fi
+
 dnl Check for SDL
 if test x$disable_sdl = xno ; then
     SDL_VERSION=2.0.4
@@ -111,7 +120,7 @@ case "$host" in
         osflag="__linux__"
         CXXFLAGS="$CXXFLAGS -D__unix__ -D$osflag -I\$(top_srcdir) -I\$(top_srcdir)/platform/linux $X_CFLAGS"
         LIBS="$LIBS -lGL -lGLU"
-        if test x$have_sdl_lib != xyes ; then
+        if test x$have_sdl_lib != xyes && test x$enable_fvm3dx != xyes ; then
             X_EXTRA_LIBS="$X_EXTRA_LIBS -lXxf86vm"
         fi
         ;;
@@ -133,5 +142,6 @@ sdk2_unix.h \
 platform/Makefile \
 platform/linux/Makefile \
 platform/sdl/Makefile \
+platform/fvm3dx/Makefile \
 platform/windows/Makefile \
 )

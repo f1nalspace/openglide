@@ -63,7 +63,7 @@ libglide3x_la_LDFLAGS = -no-undefined -version-info $(LIBVERSION) $(X_LIBS) $(X_
 
 INCLUDES=
 
-libglide2x_la_LIBADD = ./platform/linux/libplatform.la ./platform/sdl/libsdl.la ./platform/windows/libwindows.la
+libglide2x_la_LIBADD = ./platform/linux/libplatform.la ./platform/sdl/libsdl.la ./platform/windows/libwindows.la ./platform/fvm3dx/libfvm3dx.la
 libglide3x_la_LIBADD = $(libglide2x_la_LIBADD)
 
 install-data-hook:

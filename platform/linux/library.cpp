@@ -9,7 +9,11 @@
 //*      Modified by Paul for Glidos (http://www.glidos.net)
 //*               Linux version by Simon White
 //**************************************************************
-#ifndef WIN32
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
+#if !defined WIN32 && !defined C_USE_FVM3DX
 
 #include <stdlib.h>
 #include "GlOgl.h"
@@ -34,4 +38,4 @@ public:
 
 static InitLibrary initLibrary;
 
-#endif // WIN32
+#endif // !WIN32 && !C_USE_FVM3DX

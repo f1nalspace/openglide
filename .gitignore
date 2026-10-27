@@ -26,8 +26,9 @@ Makefile
 Makefile.in
 /stamp-h1
 
-# Out-of-tree build directory used for the host build
+# Out-of-tree build directories used for the host builds
 /build/
+/build-fvm3dx/
 
 # Compiled Object files
 *.slo

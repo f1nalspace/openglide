@@ -13,7 +13,7 @@
 #include "config.h"
 #endif
 
-#if !defined C_USE_SDL && !defined WIN32
+#if !defined C_USE_SDL && !defined C_USE_FVM3DX && !defined WIN32
 #define GLX_GLXEXT_PROTOTYPES
 
 #include <GL/glx.h>
@@ -29,4 +29,4 @@ ExtFn OGLGetProcAddress(const char *x)
 #endif
 }
 
-#endif // !C_USE_SDL && !WIN32
+#endif // !C_USE_SDL && !C_USE_FVM3DX && !WIN32
