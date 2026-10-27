@@ -444,8 +444,10 @@ grAlphaCombine( GrCombineFunction_t function, GrCombineFactor_t factor,
     Glide.State.AlphaOther = other;
     Glide.State.AlphaInvert = invert;
 
-    Glide.ALocal = alphaCombineTable[ factor ][ function ].local;
-    Glide.AOther = alphaCombineTable[ factor ][ function ].other;
+    // The colour unit's factor and its ..._ALPHA functions read local and other alpha as well; what grColorCombine asked for stays.
+    const OGLColorTable &colorEntry = colorCombineTable[ Glide.State.ColorCombineFactor ][ Glide.State.ColorCombineFunction ];
+    Glide.ALocal = alphaCombineTable[ factor ][ function ].local || colorEntry.alocal;
+    Glide.AOther = alphaCombineTable[ factor ][ function ].other || colorEntry.aother;
     AlphaFactorFunc = alphaCombineTable[ factor ][ function ].func;
 
     if ( Glide.AOther && ( other == GR_COMBINE_OTHER_TEXTURE ) )

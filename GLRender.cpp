@@ -356,6 +356,15 @@ void RenderDrawTriangles( void )
     OGLRender.NumberOfTriangles = 0;
 }
 
+
+// Primary and secondary colour for a sum of 0..2: each stays inside 0..1, the sum stays exact.
+static inline void SplitColorSum( float &primary, float &secondary )
+{
+    float sum = primary + secondary;
+    primary = ( sum < 0.0f ) ? 0.0f : ( ( sum > 1.0f ) ? 1.0f : sum );
+    secondary = ( sum > 1.0f ) ? sum - 1.0f : 0.0f;
+}
+
 void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c, bool unsnap )
 {
     pC = &OGLRender.TColor[ OGLRender.NumberOfTriangles ];
@@ -491,6 +500,22 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
     }
 
     ColorFunctionFunc( pC, pC2, &Local, &Other );
+
+    // Without the texture in the colour, primary plus secondary colour is the whole result. OpenGL clamps both at the vertices,
+    // so a negative primary part, such as other below local in a blend, is lost there. Split the sum anew: the primary colour
+    // takes it up to 1, the secondary colour the rest up to 2, and the sum stays exact.
+    if ( !OpenGL.ColorTexture )
+    {
+        SplitColorSum( pC->ar, pC2->ar );
+        SplitColorSum( pC->ag, pC2->ag );
+        SplitColorSum( pC->ab, pC2->ab );
+        SplitColorSum( pC->br, pC2->br );
+        SplitColorSum( pC->bg, pC2->bg );
+        SplitColorSum( pC->bb, pC2->bb );
+        SplitColorSum( pC->cr, pC2->cr );
+        SplitColorSum( pC->cg, pC2->cg );
+        SplitColorSum( pC->cb, pC2->cb );
+    }
 
     switch ( Glide.State.AlphaFunction )
     {
@@ -1870,15 +1895,10 @@ void ColorFunctionMinusLocalAddLocal( TColorStruct * pC, TColorStruct * pC2, TCo
     pC->cr = ( 1.0f - CFactor.cr ) * Local->cr;
     pC->cg = ( 1.0f - CFactor.cg ) * Local->cg;
     pC->cb = ( 1.0f - CFactor.cb ) * Local->cb;
-    pC2->ar = Local->ar;
-    pC2->ag = Local->ag;
-    pC2->ab = Local->ab;
-    pC2->br = Local->br;
-    pC2->bg = Local->bg;
-    pC2->bb = Local->bb;
-    pC2->cr = Local->cr;
-    pC2->cg = Local->cg;
-    pC2->cb = Local->cb;
+    // ( 1 - factor ) * local is already the whole result; local must not be added a second time.
+    pC2->ar = pC2->ag = pC2->ab = 0.0f;
+    pC2->br = pC2->bg = pC2->bb = 0.0f;
+    pC2->cr = pC2->cg = pC2->cb = 0.0f;
 }
 
 void ColorFunctionMinusLocalAddLocalAlpha( TColorStruct * pC, TColorStruct * pC2, TColorStruct * Local, TColorStruct * Other )
