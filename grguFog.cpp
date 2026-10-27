@@ -34,6 +34,9 @@ grFogTable( const GrFog_t *ft )
     }
 }
 
+// GR_FOG_ADD2 and GR_FOG_MULT2 of the current fog mode; grFogColorValue must not undo what they need.
+static GrFogMode_t fogModeAdd;
+
 //*************************************************
 FX_ENTRY void FX_CALL
 grFogColorValue( GrColor_t fogcolor )
@@ -50,7 +53,11 @@ grFogColorValue( GrColor_t fogcolor )
                    OpenGL.FogColor[ 1 ], 
                    OpenGL.FogColor[ 2 ], 
                    OpenGL.FogColor[ 3 ] );
-    glFogfv( GL_FOG_COLOR, &OpenGL.FogColor[0] );
+    // GR_FOG_ADD2 fogs towards black whatever the fog colour is.
+    if ( !( fogModeAdd & GR_FOG_ADD2 ) )
+    {
+        glFogfv( GL_FOG_COLOR, &OpenGL.FogColor[0] );
+    }
 }
 
 //*************************************************
@@ -61,14 +68,14 @@ grFogMode( GrFogMode_t mode )
     GlideMsg( "grFogMode( %d )\n", mode );
 #endif
 
-    static GrFogMode_t  modeSource, 
-                        modeAdd;
+    static GrFogMode_t  modeSource;
     static GLfloat      ZeroColor[ 4 ] = { 0.0f, 0.0f, 0.0f, 0.0f };
 
     RenderDrawTriangles( );
 
     modeSource = mode & ( GR_FOG_WITH_TABLE | GR_FOG_WITH_ITERATED_ALPHA );
-    modeAdd = mode & ( GR_FOG_MULT2 | GR_FOG_ADD2 );
+    fogModeAdd = mode & ( GR_FOG_MULT2 | GR_FOG_ADD2 );
+    OpenGL.FogWithoutColor = ( fogModeAdd & GR_FOG_MULT2 ) != 0;
 
     if ( modeSource )
     {
@@ -84,16 +91,14 @@ grFogMode( GrFogMode_t mode )
         glDisable( GL_FOG );
     }
 
-    switch ( modeAdd )
+    // ADD2 fogs towards black: ( 1 - alpha ) times the colour. MULT2 keeps the fog colour, the triangle drops its own colour.
+    if ( fogModeAdd & GR_FOG_ADD2 )
     {
-    case GR_FOG_MULT2:
-    case GR_FOG_ADD2:
         glFogfv( GL_FOG_COLOR, &ZeroColor[ 0 ] );
-        break;
-
-    default:
+    }
+    else
+    {
         glFogfv( GL_FOG_COLOR, &OpenGL.FogColor[ 0 ] );
-        break;
     }
     
     Glide.State.FogMode = modeSource;

@@ -242,6 +242,8 @@ struct OpenGLStruct
     GLfloat                 FogColor[ 4 ];
     OGLByteColor            ChromaColor;
     bool                    Fog;
+    // GR_FOG_MULT2: fog alpha times the fog colour, without the incoming colour.
+    bool                    FogWithoutColor;
     bool                    Texture;
     bool                    ColorTexture;
     bool                    AlphaTexture;

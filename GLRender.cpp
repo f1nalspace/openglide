@@ -698,6 +698,17 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
 //            pF->bf = 1.0f - pF->bf;
 //            pF->cf = 1.0f - pF->cf;
 //        }
+
+        // GR_FOG_MULT2 leaves the incoming colour out: fogging from black gives fog alpha times the fog colour.
+        if ( OpenGL.Fog && OpenGL.FogWithoutColor )
+        {
+            pC->ar = pC->ag = pC->ab = 0.0f;
+            pC->br = pC->bg = pC->bb = 0.0f;
+            pC->cr = pC->cg = pC->cb = 0.0f;
+            pC2->ar = pC2->ag = pC2->ab = 0.0f;
+            pC2->br = pC2->bg = pC2->bb = 0.0f;
+            pC2->cr = pC2->cg = pC2->cb = 0.0f;
+        }
         
     #ifdef OGL_DEBUG
        DEBUG_MIN_MAX( pF->af, OGLRender.MaxF, OGLRender.MinF );
