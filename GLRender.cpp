@@ -192,6 +192,9 @@ static const int textureStageLogSize = 1024;
 // grTexLodBiasValue as the TMU keeps it: signed quarters of a level, rounded the way 3dfx's Glide rounds.
 static const float lodBiasQuarter = 0.25f;
 static const float lodBiasRounding = 0.125f;
+// The depth range both projections of grDepthBufferMode map onto.
+static const float depthNearest = 0.0f;
+static const float depthFarthest = 1.0f;
 
 struct TextureStageProgram
 {
@@ -211,6 +214,32 @@ static TextureStageProgram textureStage;
 //**************************************************************
 // Functions definitions
 //**************************************************************
+
+// Whether a primitive's depth has no effect: the depth buffer is off, or every fragment passes and none is written.
+static bool DepthIsUnused( void )
+{
+    if ( Glide.State.DepthBufferMode == GR_DEPTHBUFFER_DISABLE )
+    {
+        return true;
+    }
+    bool alwaysPasses = ( Glide.State.DepthFunction == GR_CMP_ALWAYS );
+    return alwaysPasses && !Glide.State.DepthBufferWritting;
+}
+
+// GR_CMP_ALWAYS with writing still writes each fragment's depth, as the Voodoo does. The Voodoo never cuts a primitive at a near or far plane,
+// so the depth is kept inside OpenGL's range instead; NaN becomes the nearest depth.
+static float DepthInRange( float depth )
+{
+    if ( !( depth > depthNearest ) )
+    {
+        return depthNearest;
+    }
+    if ( depth > depthFarthest )
+    {
+        return depthFarthest;
+    }
+    return depth;
+}
 
 static GLuint CompileTextureStage( void )
 {
@@ -1039,8 +1068,7 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
     }
     
     // Z-Buffering
-    if ( ( Glide.State.DepthBufferMode == GR_DEPTHBUFFER_DISABLE ) || 
-         ( Glide.State.DepthFunction == GR_CMP_ALWAYS ) )
+    if ( DepthIsUnused( ) )
     {
         pV->az = 0.0f;
         pV->bz = 0.0f;
@@ -1082,6 +1110,13 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
             pV->bz = b->oow;
             pV->cz = c->oow;
         }
+    }
+
+    if ( Glide.State.DepthFunction == GR_CMP_ALWAYS )
+    {
+        pV->az = DepthInRange( pV->az );
+        pV->bz = DepthInRange( pV->bz );
+        pV->cz = DepthInRange( pV->cz );
     }
 
     if ( ( unsnap ) &&
@@ -1550,8 +1585,7 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
     }
     
     // Z-Buffering
-    if ( ( Glide.State.DepthBufferMode == GR_DEPTHBUFFER_DISABLE ) || 
-         ( Glide.State.DepthBufferMode == GR_CMP_ALWAYS ) )
+    if ( DepthIsUnused( ) )
     {
         pV->az = 0.0f;
         pV->bz = 0.0f;
@@ -1588,6 +1622,12 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
             pV->az = a->oow;
             pV->bz = b->oow;
         }
+    }
+
+    if ( Glide.State.DepthFunction == GR_CMP_ALWAYS )
+    {
+        pV->az = DepthInRange( pV->az );
+        pV->bz = DepthInRange( pV->bz );
     }
 
     if ( ( unsnap ) &&
@@ -1983,8 +2023,7 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
     }
     
     // Z-Buffering
-    if ( ( Glide.State.DepthBufferMode == GR_DEPTHBUFFER_DISABLE ) || 
-         ( Glide.State.DepthBufferMode == GR_CMP_ALWAYS ) )
+    if ( DepthIsUnused( ) )
     {
         pV->az = 0.0f;
     }
@@ -2009,6 +2048,11 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
         {
             pV->az = a->oow;
         }
+    }
+
+    if ( Glide.State.DepthFunction == GR_CMP_ALWAYS )
+    {
+        pV->az = DepthInRange( pV->az );
     }
 
     if ( ( unsnap ) &&
