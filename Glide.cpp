@@ -16,6 +16,7 @@
 #include "GLExtensions.h"
 #include "PGTexture.h"
 #include "PGUTexture.h"
+#include "GLRender.h"
 
 #include "platform/error.h"
 
@@ -43,7 +44,7 @@ GlideStruct     Glide;
 OpenGLStruct    OpenGL;
 
 // Classes
-PGTexture       *Textures;
+PGTexture       *Textures[ OGL_TMU_COUNT ];
 PGUTexture       UTextures;
 
 #ifdef OGL_DEBUG
@@ -128,7 +129,8 @@ void InitOpenGL( void )
     glMatrixMode( GL_MODELVIEW );
     glLoadIdentity( );
 
-    glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
+    OpenGL.TextureEnvMode = GL_MODULATE;
+    glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, OpenGL.TextureEnvMode );
 //  glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL );
 //  glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_BLEND );
 //  glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_ADD );
@@ -136,4 +138,6 @@ void InitOpenGL( void )
 
     glPixelStorei( GL_PACK_ALIGNMENT, 2);
     glPixelStorei( GL_UNPACK_ALIGNMENT, 2);
+
+    RenderCreateTextureStage( );
 }

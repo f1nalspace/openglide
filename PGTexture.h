@@ -38,13 +38,14 @@ public:
     void Clear( void );
     static FxU32 TextureMemRequired( FxU32 evenOdd, GrTexInfo *info );
     bool MakeReady( void );
+    bool IsValid( void ) const;
     void DownloadTable( GrTexTable_t type, FxU32 *data, int first, int count );
     void Source( FxU32 startAddress, FxU32 evenOdd, GrTexInfo *info );
     void DownloadMipMap( FxU32 startAddress, FxU32 evenOdd, GrTexInfo *info );
     void DownloadMipMapPartial( FxU32 startAddress, FxU32 evenOdd, GrTexInfo *info, int start, int end );
     FxU32 GetMemorySize( void );
 
-    PGTexture( int mem_size );
+    PGTexture( int mem_size, int tmu );
     virtual ~PGTexture();
 
 #ifdef OGL_DEBUG
@@ -68,6 +69,8 @@ private:
     void ApplyKeyToPalette( void );
     void GetTexValues( TexValues *tval );
 
+    // The TMU whose texture memory this is; its GL sampling is OpenGL.TextureUnit[ m_tmu ].
+    int             m_tmu;
     FxU32           m_tex_memory_size;
     bool            m_palette_dirty;
     FxU32           m_palette_hash;
@@ -89,6 +92,6 @@ private:
     GuNccTable      m_ncc[2];
 };
 
-extern PGTexture *Textures;
+extern PGTexture *Textures[ OGL_TMU_COUNT ];
 
 #endif

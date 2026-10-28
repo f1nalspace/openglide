@@ -115,6 +115,25 @@ PFNGLGETCOLORTABLEPARAMETERFVEXTPROC    p_glGetColorTableParameterfvEXT = NULL;
 
 PFNGLBLENDFUNCSEPARATEEXTPROC           p_glBlendFuncSeparateEXT = NULL;
 
+PFNGLCREATESHADERPROC                   p_glCreateShader = NULL;
+PFNGLSHADERSOURCEPROC                   p_glShaderSource = NULL;
+PFNGLCOMPILESHADERPROC                  p_glCompileShader = NULL;
+PFNGLGETSHADERIVPROC                    p_glGetShaderiv = NULL;
+PFNGLGETSHADERINFOLOGPROC               p_glGetShaderInfoLog = NULL;
+PFNGLDELETESHADERPROC                   p_glDeleteShader = NULL;
+PFNGLCREATEPROGRAMPROC                  p_glCreateProgram = NULL;
+PFNGLATTACHSHADERPROC                   p_glAttachShader = NULL;
+PFNGLLINKPROGRAMPROC                    p_glLinkProgram = NULL;
+PFNGLGETPROGRAMIVPROC                   p_glGetProgramiv = NULL;
+PFNGLGETPROGRAMINFOLOGPROC              p_glGetProgramInfoLog = NULL;
+PFNGLDELETEPROGRAMPROC                  p_glDeleteProgram = NULL;
+PFNGLUSEPROGRAMPROC                     p_glUseProgram = NULL;
+PFNGLGETUNIFORMLOCATIONPROC             p_glGetUniformLocation = NULL;
+PFNGLUNIFORM1IPROC                      p_glUniform1i = NULL;
+PFNGLUNIFORM1FPROC                      p_glUniform1f = NULL;
+PFNGLUNIFORM2FPROC                      p_glUniform2f = NULL;
+PFNGLUNIFORM4FVPROC                     p_glUniform4fv = NULL;
+
 // Declarations
 void GLExtensions( void );
 
@@ -426,6 +445,30 @@ void GLExtensions( void )
         }
 
         RenderUpdateArrays( );
+    }
+
+    // GLSL 1.20 of OpenGL 2.0 and later, for the texture stage's shader; the TMUs need two units.
+    const char *shadingLanguage = (const char *)glGetString( GL_SHADING_LANGUAGE_VERSION );
+    if ( ( shadingLanguage != NULL ) && InternalConfig.ARB_multitexture && ( OpenGL.MultiTextureTMUs >= OGL_TMU_COUNT ) )
+    {
+        p_glCreateShader          = (PFNGLCREATESHADERPROC) OGLGetProcAddress( "glCreateShader" );
+        p_glShaderSource          = (PFNGLSHADERSOURCEPROC) OGLGetProcAddress( "glShaderSource" );
+        p_glCompileShader         = (PFNGLCOMPILESHADERPROC) OGLGetProcAddress( "glCompileShader" );
+        p_glGetShaderiv           = (PFNGLGETSHADERIVPROC) OGLGetProcAddress( "glGetShaderiv" );
+        p_glGetShaderInfoLog      = (PFNGLGETSHADERINFOLOGPROC) OGLGetProcAddress( "glGetShaderInfoLog" );
+        p_glDeleteShader          = (PFNGLDELETESHADERPROC) OGLGetProcAddress( "glDeleteShader" );
+        p_glCreateProgram         = (PFNGLCREATEPROGRAMPROC) OGLGetProcAddress( "glCreateProgram" );
+        p_glAttachShader          = (PFNGLATTACHSHADERPROC) OGLGetProcAddress( "glAttachShader" );
+        p_glLinkProgram           = (PFNGLLINKPROGRAMPROC) OGLGetProcAddress( "glLinkProgram" );
+        p_glGetProgramiv          = (PFNGLGETPROGRAMIVPROC) OGLGetProcAddress( "glGetProgramiv" );
+        p_glGetProgramInfoLog     = (PFNGLGETPROGRAMINFOLOGPROC) OGLGetProcAddress( "glGetProgramInfoLog" );
+        p_glDeleteProgram         = (PFNGLDELETEPROGRAMPROC) OGLGetProcAddress( "glDeleteProgram" );
+        p_glUseProgram            = (PFNGLUSEPROGRAMPROC) OGLGetProcAddress( "glUseProgram" );
+        p_glGetUniformLocation    = (PFNGLGETUNIFORMLOCATIONPROC) OGLGetProcAddress( "glGetUniformLocation" );
+        p_glUniform1i             = (PFNGLUNIFORM1IPROC) OGLGetProcAddress( "glUniform1i" );
+        p_glUniform1f             = (PFNGLUNIFORM1FPROC) OGLGetProcAddress( "glUniform1f" );
+        p_glUniform2f             = (PFNGLUNIFORM2FPROC) OGLGetProcAddress( "glUniform2f" );
+        p_glUniform4fv            = (PFNGLUNIFORM4FVPROC) OGLGetProcAddress( "glUniform4fv" );
     }
 
     if ( InternalConfig.EXT_paletted_texture )

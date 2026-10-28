@@ -66,9 +66,429 @@ static float            hAspect,
                         wAspect,
                         maxoow;
 
+// The texture stage: TMU1, then TMU0, as a Voodoo2 combines them, in the TMU's 8-bit integer arithmetic with the factor plus one,
+// truncation, clamping and the inversion last. TMU0's output then takes the texture's place in what the fixed pipeline did with it:
+// the texture environment grColorCombine chose, the secondary colour, the fog.
+static const char *textureStageSource =
+    "#version 120\n"
+    "uniform sampler2D tmu0Texture;\n"
+    "uniform sampler2D tmu1Texture;\n"
+    "uniform vec2 tmuTextureValid;\n"
+    // Per TMU and channel -- TMU0 RGB, TMU0 alpha, TMU1 RGB, TMU1 alpha: zero other, subtract local, add local, add local alpha.
+    "uniform vec4 tmuFunction[4];\n"
+    // The same four: factor select, reverse blend, invert.
+    "uniform vec4 tmuFactor[4];\n"
+    // Per TMU: S and T into Glide's texel space, the LOD bias, the detail maximum 0..255.
+    "uniform vec4 tmuLod[2];\n"
+    // Per TMU: the smallest and the largest LOD number it may use, the detail bias, 2 to the power of the detail scale.
+    "uniform vec4 tmuLodRange[2];\n"
+    "uniform float textureEnvMode;\n"
+    "uniform float colorSum;\n"
+    "uniform float fogEnabled;\n"
+    "const float channelMaximum = 255.0;\n"
+    "const float factorScale = 256.0;\n"
+    "const float lodFixedPoint = 256.0;\n"
+    "const float smallestFootprint = 1.0e-20;\n"
+    "float CombineChannel(vec4 function, vec4 factorFields, float other, float local, float localAlpha, float factor)\n"
+    "{\n"
+    "    float selectedOther = function.x > 0.5 ? 0.0 : other;\n"
+    "    float difference = selectedOther - (function.y > 0.5 ? local : 0.0);\n"
+    "    float effectiveFactor = factorFields.y > 0.5 ? factor : channelMaximum - factor;\n"
+    "    float product = floor(difference * (effectiveFactor + 1.0) / factorScale);\n"
+    "    float addend = function.z > 0.5 ? local : (function.w > 0.5 ? localAlpha : 0.0);\n"
+    "    float result = clamp(product + addend, 0.0, channelMaximum);\n"
+    "    return factorFields.z > 0.5 ? channelMaximum - result : result;\n"
+    "}\n"
+    "float FactorValue(float select, float channelLocal, float localAlpha, float otherAlpha, vec2 lodFactors)\n"
+    "{\n"
+    "    if (select < 0.5) {\n"
+    "        return 0.0;\n"
+    "    }\n"
+    "    if (select < 1.5) {\n"
+    "        return channelLocal;\n"
+    "    }\n"
+    "    if (select < 2.5) {\n"
+    "        return otherAlpha;\n"
+    "    }\n"
+    "    if (select < 3.5) {\n"
+    "        return localAlpha;\n"
+    "    }\n"
+    "    if (select < 4.5) {\n"
+    "        return lodFactors.x;\n"
+    "    }\n"
+    "    if (select < 5.5) {\n"
+    "        return lodFactors.y;\n"
+    "    }\n"
+    "    return 0.0;\n"
+    "}\n"
+    // The detail factor and the LOD fraction. The LOD in 8.8 fixed point as the TMU keeps it: the texel footprint in Glide's texel
+    // space, plus the bias, clamped to the TMU's levels.
+    "vec2 LodFactors(vec4 coordinate, vec4 lod, vec4 lodRange)\n"
+    "{\n"
+    "    vec2 texelPosition = coordinate.st / coordinate.q * lod.xy;\n"
+    "    float footprint = max(length(dFdx(texelPosition)), length(dFdy(texelPosition)));\n"
+    "    float level = clamp(log2(max(footprint, smallestFootprint)) + lod.z, lodRange.x, lodRange.y);\n"
+    "    float fixedLevel = floor(level * lodFixedPoint);\n"
+    "    float lodFraction = fixedLevel - floor(fixedLevel / lodFixedPoint) * lodFixedPoint;\n"
+    "    float detailBias = lodRange.z * lodFixedPoint;\n"
+    "    float detail = 0.0;\n"
+    "    if (detailBias > fixedLevel) {\n"
+    "        detail = min(lod.w, floor((detailBias - fixedLevel) * lodRange.w / factorScale));\n"
+    "    }\n"
+    "    return vec2(detail, lodFraction);\n"
+    "}\n"
+    "vec4 TmuOutput(vec4 texel, vec4 other, vec4 rgbFunction, vec4 rgbFactor, vec4 alphaFunction, vec4 alphaFactor, vec2 lodFactors)\n"
+    "{\n"
+    "    vec4 result;\n"
+    "    for (int channel = 0; channel < 3; channel++) {\n"
+    "        float factor = FactorValue(rgbFactor.x, texel[channel], texel.a, other.a, lodFactors);\n"
+    "        result[channel] = CombineChannel(rgbFunction, rgbFactor, other[channel], texel[channel], texel.a, factor);\n"
+    "    }\n"
+    "    float alphaFactorValue = FactorValue(alphaFactor.x, texel.a, texel.a, other.a, lodFactors);\n"
+    "    result.a = CombineChannel(alphaFunction, alphaFactor, other.a, texel.a, texel.a, alphaFactorValue);\n"
+    "    return result;\n"
+    "}\n"
+    "void main()\n"
+    "{\n"
+    "    vec2 tmu1LodFactors = LodFactors(gl_TexCoord[1], tmuLod[1], tmuLodRange[1]);\n"
+    "    vec2 tmu0LodFactors = LodFactors(gl_TexCoord[0], tmuLod[0], tmuLodRange[0]);\n"
+    "    vec4 tmu1Sample = texture2DProj(tmu1Texture, gl_TexCoord[1]);\n"
+    "    vec4 tmu0Sample = texture2DProj(tmu0Texture, gl_TexCoord[0]);\n"
+    "    vec4 tmu1Texel = floor(tmu1Sample * channelMaximum + 0.5) * tmuTextureValid.y;\n"
+    "    vec4 tmu0Texel = floor(tmu0Sample * channelMaximum + 0.5) * tmuTextureValid.x;\n"
+    "    vec4 upstream = vec4(0.0);\n"
+    "    vec4 tmu1Output = TmuOutput(tmu1Texel, upstream, tmuFunction[2], tmuFactor[2], tmuFunction[3], tmuFactor[3], tmu1LodFactors);\n"
+    "    vec4 tmu0Output = TmuOutput(tmu0Texel, tmu1Output, tmuFunction[0], tmuFactor[0], tmuFunction[1], tmuFactor[1], tmu0LodFactors);\n"
+    "    vec4 textureColor = tmu0Output / channelMaximum;\n"
+    "    vec4 primary = gl_Color;\n"
+    "    vec4 color;\n"
+    "    if (textureEnvMode < 0.5) {\n"
+    "        color = primary * textureColor;\n"
+    "    } else if (textureEnvMode < 1.5) {\n"
+    "        color = vec4(mix(primary.rgb, textureColor.rgb, textureColor.a), primary.a);\n"
+    "    } else {\n"
+    "        color = vec4(mix(primary.rgb, gl_TextureEnvColor[0].rgb, textureColor.rgb), primary.a * textureColor.a);\n"
+    "    }\n"
+    "    color.rgb = min(color.rgb + gl_SecondaryColor.rgb * colorSum, 1.0);\n"
+    "    if (fogEnabled > 0.5) {\n"
+    "        float fogFactor = clamp((gl_Fog.end - gl_FogFragCoord) * gl_Fog.scale, 0.0, 1.0);\n"
+    "        color.rgb = mix(gl_Fog.color.rgb, color.rgb, fogFactor);\n"
+    "    }\n"
+    "    gl_FragColor = color;\n"
+    "}\n";
+
+// The texture environment modes as the shader numbers them.
+static const GLfloat textureEnvModulate = 0.0f;
+static const GLfloat textureEnvDecal = 1.0f;
+static const GLfloat textureEnvBlend = 2.0f;
+// Glide's combine factor: the source in the low three bits, "one minus" in the fourth.
+static const FxU32 combineFactorSelectMask = 0x7;
+static const FxU32 combineFactorInvertBit = 0x8;
+static const GLfloat channelMaximum = 255.0f;
+// One combine unit's channel in tmuFunction and tmuFactor: four values each.
+static const int combineFieldCount = 4;
+static const int combineUnitsPerTmu = 2;
+static const int textureStageLogSize = 1024;
+// grTexLodBiasValue as the TMU keeps it: signed quarters of a level, rounded the way 3dfx's Glide rounds.
+static const float lodBiasQuarter = 0.25f;
+static const float lodBiasRounding = 0.125f;
+
+struct TextureStageProgram
+{
+    GLuint  program;
+    GLint   tmuTextureValid;
+    GLint   tmuFunction;
+    GLint   tmuFactor;
+    GLint   tmuLod;
+    GLint   tmuLodRange;
+    GLint   textureEnvMode;
+    GLint   colorSum;
+    GLint   fogEnabled;
+};
+
+static TextureStageProgram textureStage;
+
 //**************************************************************
 // Functions definitions
 //**************************************************************
+
+static GLuint CompileTextureStage( void )
+{
+    GLuint shader = p_glCreateShader( GL_FRAGMENT_SHADER );
+    const GLchar *source = textureStageSource;
+    p_glShaderSource( shader, 1, &source, NULL );
+    p_glCompileShader( shader );
+
+    GLint compiled = GL_FALSE;
+    p_glGetShaderiv( shader, GL_COMPILE_STATUS, &compiled );
+    if ( compiled != GL_TRUE )
+    {
+        GLchar log[ textureStageLogSize ];
+        p_glGetShaderInfoLog( shader, textureStageLogSize, NULL, log );
+        Error( "The texture stage's shader does not compile, TMU0 draws alone: %s\n", log );
+        p_glDeleteShader( shader );
+        return 0;
+    }
+    return shader;
+}
+
+void RenderCreateTextureStage( void )
+{
+    OpenGL.TextureStageShader = false;
+    textureStage.program = 0;
+
+    bool haveGlsl = ( p_glCreateShader != NULL ) && ( p_glShaderSource != NULL ) && ( p_glCompileShader != NULL ) &&
+                    ( p_glGetShaderiv != NULL ) && ( p_glGetShaderInfoLog != NULL ) && ( p_glDeleteShader != NULL ) &&
+                    ( p_glCreateProgram != NULL ) && ( p_glAttachShader != NULL ) && ( p_glLinkProgram != NULL ) &&
+                    ( p_glGetProgramiv != NULL ) && ( p_glGetProgramInfoLog != NULL ) && ( p_glDeleteProgram != NULL ) &&
+                    ( p_glUseProgram != NULL ) && ( p_glGetUniformLocation != NULL ) && ( p_glUniform1i != NULL ) &&
+                    ( p_glUniform1f != NULL ) && ( p_glUniform2f != NULL ) && ( p_glUniform4fv != NULL );
+    if ( !haveGlsl )
+    {
+        GlideMsg( "No GLSL or fewer than two texture units: TMU0 draws alone, its texel as it is\n" );
+        return;
+    }
+
+    GLuint shader = CompileTextureStage( );
+    if ( shader == 0 )
+    {
+        return;
+    }
+
+    GLuint program = p_glCreateProgram( );
+    p_glAttachShader( program, shader );
+    p_glLinkProgram( program );
+    p_glDeleteShader( shader );
+
+    GLint linked = GL_FALSE;
+    p_glGetProgramiv( program, GL_LINK_STATUS, &linked );
+    if ( linked != GL_TRUE )
+    {
+        GLchar log[ textureStageLogSize ];
+        p_glGetProgramInfoLog( program, textureStageLogSize, NULL, log );
+        Error( "The texture stage's shader does not link, TMU0 draws alone: %s\n", log );
+        p_glDeleteProgram( program );
+        return;
+    }
+
+    textureStage.program = program;
+    textureStage.tmuTextureValid = p_glGetUniformLocation( program, "tmuTextureValid" );
+    textureStage.tmuFunction = p_glGetUniformLocation( program, "tmuFunction" );
+    textureStage.tmuFactor = p_glGetUniformLocation( program, "tmuFactor" );
+    textureStage.tmuLod = p_glGetUniformLocation( program, "tmuLod" );
+    textureStage.tmuLodRange = p_glGetUniformLocation( program, "tmuLodRange" );
+    textureStage.textureEnvMode = p_glGetUniformLocation( program, "textureEnvMode" );
+    textureStage.colorSum = p_glGetUniformLocation( program, "colorSum" );
+    textureStage.fogEnabled = p_glGetUniformLocation( program, "fogEnabled" );
+
+    GLint tmu0Sampler = p_glGetUniformLocation( program, "tmu0Texture" );
+    GLint tmu1Sampler = p_glGetUniformLocation( program, "tmu1Texture" );
+    p_glUseProgram( program );
+    p_glUniform1i( tmu0Sampler, GR_TMU0 );
+    p_glUniform1i( tmu1Sampler, GR_TMU1 );
+    p_glUseProgram( 0 );
+
+    OpenGL.TextureStageShader = true;
+}
+
+void RenderDeleteTextureStage( void )
+{
+    if ( textureStage.program != 0 )
+    {
+        p_glDeleteProgram( textureStage.program );
+        textureStage.program = 0;
+    }
+    OpenGL.TextureStageShader = false;
+}
+
+// The fixed pipeline draws TMU0's texel as it is. Anything else -- another function, an inversion, TMU1 -- goes through the shader.
+static bool TextureStageActive( void )
+{
+    if ( !OpenGL.TextureStageShader || !OpenGL.Texture )
+    {
+        return false;
+    }
+    const TmuState *tmu0 = &Glide.State.Tmu[ GR_TMU0 ];
+    bool rgbIsTexel = ( tmu0->CombineCFunction == GR_COMBINE_FUNCTION_LOCAL ) && !tmu0->CombineRGBInvert;
+    bool alphaIsTexel = ( tmu0->CombineAFunction == GR_COMBINE_FUNCTION_LOCAL ) && !tmu0->CombineAInvert;
+    return !( rgbIsTexel && alphaIsTexel );
+}
+
+// One channel of a TMU's combine unit as the fields Glide's grTexCombine writes: tmuFunction's four, then tmuFactor's four.
+static void CombineUnitFields( FxU32 function, FxU32 factor, FxU32 invert, GLfloat *functionFields, GLfloat *factorFields )
+{
+    bool zeroOther = false;
+    bool subtractLocal = false;
+    bool addLocal = false;
+    bool addLocalAlpha = false;
+    switch ( function )
+    {
+    case GR_COMBINE_FUNCTION_LOCAL:
+        zeroOther = true;
+        addLocal = true;
+        break;
+    case GR_COMBINE_FUNCTION_LOCAL_ALPHA:
+        zeroOther = true;
+        addLocalAlpha = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_OTHER:
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_OTHER_ADD_LOCAL:
+        addLocal = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_OTHER_ADD_LOCAL_ALPHA:
+        addLocalAlpha = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_OTHER_MINUS_LOCAL:
+        subtractLocal = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_OTHER_MINUS_LOCAL_ADD_LOCAL:
+        subtractLocal = true;
+        addLocal = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_OTHER_MINUS_LOCAL_ADD_LOCAL_ALPHA:
+        subtractLocal = true;
+        addLocalAlpha = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_MINUS_LOCAL_ADD_LOCAL:
+        zeroOther = true;
+        subtractLocal = true;
+        addLocal = true;
+        break;
+    case GR_COMBINE_FUNCTION_SCALE_MINUS_LOCAL_ADD_LOCAL_ALPHA:
+        zeroOther = true;
+        subtractLocal = true;
+        addLocalAlpha = true;
+        break;
+    default:
+        // GR_COMBINE_FUNCTION_ZERO, and what Glide does not know: nothing passes.
+        zeroOther = true;
+        break;
+    }
+    functionFields[ 0 ] = zeroOther ? 1.0f : 0.0f;
+    functionFields[ 1 ] = subtractLocal ? 1.0f : 0.0f;
+    functionFields[ 2 ] = addLocal ? 1.0f : 0.0f;
+    functionFields[ 3 ] = addLocalAlpha ? 1.0f : 0.0f;
+    factorFields[ 0 ] = (GLfloat)( factor & combineFactorSelectMask );
+    factorFields[ 1 ] = ( ( factor & combineFactorInvertBit ) == 0 ) ? 1.0f : 0.0f;
+    factorFields[ 2 ] = invert ? 1.0f : 0.0f;
+    factorFields[ 3 ] = 0.0f;
+}
+
+// What the shader needs of a TMU's LOD: tmuLod's and tmuLodRange's four values.
+static void TmuLodFields( int tmu, GLfloat *lod, GLfloat *lodRange )
+{
+    const TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+    float tmuHAspect;
+    float tmuWAspect;
+    Textures[ tmu ]->GetAspect( &tmuHAspect, &tmuWAspect );
+
+    int lodBiasQuarters = (int)( ( tmuState->LodBias + lodBiasRounding ) / lodBiasQuarter );
+    // grTexDetailControl's maximum as Glide packs it: 0..1 to 8 bits, cut off.
+    FxU32 detailMaximum = (FxU32)( tmuState->DetailMax * channelMaximum );
+    bool mipmapping = ( tmuState->MipMapMode != GR_MIPMAP_DISABLE );
+
+    lod[ 0 ] = 1.0f / tmuWAspect;
+    lod[ 1 ] = 1.0f / tmuHAspect;
+    lod[ 2 ] = (GLfloat)lodBiasQuarters * lodBiasQuarter;
+    lod[ 3 ] = (GLfloat)detailMaximum;
+    lodRange[ 0 ] = (GLfloat)tmuState->LargeLod;
+    lodRange[ 1 ] = (GLfloat)( mipmapping ? tmuState->SmallLod : tmuState->LargeLod );
+    lodRange[ 2 ] = (GLfloat)tmuState->DetailBias;
+    lodRange[ 3 ] = (GLfloat)( 1 << tmuState->DetailScale );
+}
+
+// Binds TMU1's texture to GL unit 1 -- TMU0's is on unit 0 already -- and draws through the shader until EndTextureStage.
+static void BeginTextureStage( void )
+{
+    PGTexture *tmu0Texture = Textures[ GR_TMU0 ];
+    PGTexture *tmu1Texture = Textures[ GR_TMU1 ];
+    bool tmu0Valid = tmu0Texture->IsValid( );
+    bool tmu1Valid = tmu1Texture->IsValid( );
+    if ( tmu1Valid )
+    {
+        p_glActiveTextureARB( GL_TEXTURE1_ARB );
+        tmu1Texture->MakeReady( );
+        p_glActiveTextureARB( GL_TEXTURE0_ARB );
+    }
+
+    GLfloat functionFields[ OGL_TMU_COUNT * combineUnitsPerTmu * combineFieldCount ];
+    GLfloat factorFields[ OGL_TMU_COUNT * combineUnitsPerTmu * combineFieldCount ];
+    GLfloat lodFields[ OGL_TMU_COUNT * combineFieldCount ];
+    GLfloat lodRangeFields[ OGL_TMU_COUNT * combineFieldCount ];
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        const TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+        int rgbOffset = ( tmu * combineUnitsPerTmu ) * combineFieldCount;
+        int alphaOffset = rgbOffset + combineFieldCount;
+        int lodOffset = tmu * combineFieldCount;
+        CombineUnitFields( tmuState->CombineCFunction, tmuState->CombineCFactor, tmuState->CombineRGBInvert,
+                           &functionFields[ rgbOffset ], &factorFields[ rgbOffset ] );
+        CombineUnitFields( tmuState->CombineAFunction, tmuState->CombineAFactor, tmuState->CombineAInvert,
+                           &functionFields[ alphaOffset ], &factorFields[ alphaOffset ] );
+        TmuLodFields( tmu, &lodFields[ lodOffset ], &lodRangeFields[ lodOffset ] );
+    }
+
+    GLfloat environmentMode = textureEnvModulate;
+    if ( OpenGL.TextureEnvMode == GL_DECAL )
+    {
+        environmentMode = textureEnvDecal;
+    }
+    else if ( OpenGL.TextureEnvMode == GL_BLEND )
+    {
+        environmentMode = textureEnvBlend;
+    }
+    bool fogEnabled = OpenGL.Fog && InternalConfig.EXT_fog_coord;
+
+    p_glUseProgram( textureStage.program );
+    p_glUniform2f( textureStage.tmuTextureValid, tmu0Valid ? 1.0f : 0.0f, tmu1Valid ? 1.0f : 0.0f );
+    p_glUniform4fv( textureStage.tmuFunction, OGL_TMU_COUNT * combineUnitsPerTmu, functionFields );
+    p_glUniform4fv( textureStage.tmuFactor, OGL_TMU_COUNT * combineUnitsPerTmu, factorFields );
+    p_glUniform4fv( textureStage.tmuLod, OGL_TMU_COUNT, lodFields );
+    p_glUniform4fv( textureStage.tmuLodRange, OGL_TMU_COUNT, lodRangeFields );
+    p_glUniform1f( textureStage.textureEnvMode, environmentMode );
+    p_glUniform1f( textureStage.colorSum, InternalConfig.EXT_secondary_color ? 1.0f : 0.0f );
+    p_glUniform1f( textureStage.fogEnabled, fogEnabled ? 1.0f : 0.0f );
+}
+
+static void EndTextureStage( void )
+{
+    p_glUseProgram( 0 );
+}
+
+// TMU1's coordinates of one vertex as 3dfx's Glide hands them to the TMU: its own S and T only with GR_STWHINT_ST_DIFF_TMU1, its own W
+// only with GR_STWHINT_W_DIFF_TMU1, otherwise TMU0's. S and T are scaled into GL's 0..1 like TMU0's, W goes to q.
+static void Tmu1Coordinate( const GrVertex *vertex, float tmu0Oow, float tmu1HAspect, float tmu1WAspect, GLfloat *coordinate )
+{
+    bool ownST = ( Glide.State.STWHint & GR_STWHINT_ST_DIFF_TMU1 ) != 0;
+    bool ownW = ( Glide.State.STWHint & GR_STWHINT_W_DIFF_TMU1 ) != 0;
+    const GrTmuVertex *stVertex = &vertex->tmuvtx[ ownST ? GR_TMU1 : GR_TMU0 ];
+    coordinate[ 0 ] = stVertex->sow * tmu1WAspect;
+    coordinate[ 1 ] = stVertex->tow * tmu1HAspect;
+    coordinate[ 2 ] = 0.0f;
+    coordinate[ 3 ] = ownW ? vertex->tmuvtx[ GR_TMU1 ].oow : tmu0Oow;
+}
+
+// TMU1's coordinates of a triangle on GL unit 1, divided by the largest W like TMU0's, so GL's interpolation stays in range.
+static void Tmu1TriangleCoordinates( TTextureStruct *coordinates, const GrVertex *a, const GrVertex *b, const GrVertex *c,
+                                     float aTmu0Oow, float bTmu0Oow, float cTmu0Oow )
+{
+    const int coordinateCount = sizeof( TTextureStruct ) / sizeof( GLfloat );
+    float tmu1HAspect;
+    float tmu1WAspect;
+    Textures[ GR_TMU1 ]->GetAspect( &tmu1HAspect, &tmu1WAspect );
+    Tmu1Coordinate( a, aTmu0Oow, tmu1HAspect, tmu1WAspect, &coordinates->as );
+    Tmu1Coordinate( b, bTmu0Oow, tmu1HAspect, tmu1WAspect, &coordinates->bs );
+    Tmu1Coordinate( c, cTmu0Oow, tmu1HAspect, tmu1WAspect, &coordinates->cs );
+
+    float largestOow = max( coordinates->aoow, max( coordinates->boow, coordinates->coow ) );
+    float scale = 1.0f / largestOow;
+    GLfloat *values = &coordinates->as;
+    for ( int index = 0; index < coordinateCount; index++ )
+    {
+        values[ index ] *= scale;
+    }
+}
 
 // Intializes the render and allocates memory
 void RenderInitialize( void )
@@ -78,6 +498,7 @@ void RenderInitialize( void )
     OGLRender.TColor    = new TColorStruct[ MAXTRIANGLES + 1 ];
     OGLRender.TColor2   = new TColorStruct[ MAXTRIANGLES + 1 ];
     OGLRender.TTexture  = new TTextureStruct[ MAXTRIANGLES + 1 ];
+    OGLRender.TTexture1 = new TTextureStruct[ MAXTRIANGLES + 1 ];
     OGLRender.TVertex   = new TVertexStruct[ MAXTRIANGLES + 1 ];
     OGLRender.TFog      = new TFogStruct[ MAXTRIANGLES + 1 ];
 
@@ -101,6 +522,7 @@ void RenderFree( void )
     delete[] OGLRender.TColor;
     delete[] OGLRender.TColor2;
     delete[] OGLRender.TTexture;
+    delete[] OGLRender.TTexture1;
     delete[] OGLRender.TVertex;
     delete[] OGLRender.TFog;
 }
@@ -117,7 +539,9 @@ void RenderUpdateArrays( void )
     if ( InternalConfig.ARB_multitexture )
     {
         p_glClientActiveTexture( GL_TEXTURE1_ARB );
-        glTexCoordPointer( 4, GL_FLOAT, 0, &OGLRender.TTexture[0] );
+        glTexCoordPointer( 4, GL_FLOAT, 0, &OGLRender.TTexture1[0] );
+        glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+        p_glClientActiveTexture( GL_TEXTURE0_ARB );
     }
     p_glSecondaryColorPointerEXT( 3, GL_FLOAT, 4 * sizeof( GLfloat ), &OGLRender.TColor2[0] );
     if ( InternalConfig.EXT_fog_coord )
@@ -134,6 +558,7 @@ void RenderUpdateArrays( void )
 void RenderDrawTriangles( void )
 {
     bool use_two_tex = false;
+    bool texture_stage = false;
 
     if ( ! OGLRender.NumberOfTriangles )
     {
@@ -144,9 +569,14 @@ void RenderDrawTriangles( void )
     {
         glEnable( GL_TEXTURE_2D );
 
-        use_two_tex = Textures->MakeReady( );
+        use_two_tex = Textures[ GR_TMU0 ]->MakeReady( );
+        texture_stage = !use_two_tex && TextureStageActive( );
 
-        if ( use_two_tex )
+        if ( texture_stage )
+        {
+            BeginTextureStage( );
+        }
+        else if ( use_two_tex )
         {
             p_glActiveTextureARB( GL_TEXTURE1_ARB );
 
@@ -191,18 +621,30 @@ void RenderDrawTriangles( void )
             p_glSecondaryColor3fvEXT( &OGLRender.TColor2[ i ].ar );
             p_glFogCoordfEXT( OGLRender.TFog[ i ].af );
             glTexCoord4fv( &OGLRender.TTexture[ i ].as );
+            if ( texture_stage )
+            {
+                p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture1[ i ].as );
+            }
             glVertex3fv( &OGLRender.TVertex[ i ].ax );
             
             glColor3fv( &OGLRender.TColor[ i ].br );
             p_glSecondaryColor3fvEXT( &OGLRender.TColor2[ i ].br );
             p_glFogCoordfEXT( OGLRender.TFog[ i ].bf );
             glTexCoord4fv( &OGLRender.TTexture[ i ].bs );
+            if ( texture_stage )
+            {
+                p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture1[ i ].bs );
+            }
             glVertex3fv( &OGLRender.TVertex[ i ].bx );
             
             glColor3fv( &OGLRender.TColor[ i ].cr );
             p_glSecondaryColor3fvEXT( &OGLRender.TColor2[ i ].cr );
             p_glFogCoordfEXT( OGLRender.TFog[ i ].cf );
             glTexCoord4fv( &OGLRender.TTexture[ i ].cs );
+            if ( texture_stage )
+            {
+                p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture1[ i ].cs );
+            }
             glVertex3fv( &OGLRender.TVertex[ i ].cx );
         }
         glEnd( );
@@ -239,9 +681,9 @@ void RenderDrawTriangles( void )
                 p_glSecondaryColor3fvEXT( &OGLRender.TColor2[ i ].ar );
                 p_glFogCoordfEXT( OGLRender.TFog[ i ].af );
                 glTexCoord4fv( &OGLRender.TTexture[ i ].as );
-                if ( use_two_tex )
+                if ( use_two_tex || texture_stage )
                 {
-                    p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture[ i ].as );
+                    p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture1[ i ].as );
                 }
                 glVertex3fv( &OGLRender.TVertex[ i ].ax );
                 
@@ -249,9 +691,9 @@ void RenderDrawTriangles( void )
                 p_glSecondaryColor3fvEXT( &OGLRender.TColor2[ i ].br );
                 p_glFogCoordfEXT( OGLRender.TFog[ i ].bf );
                 glTexCoord4fv( &OGLRender.TTexture[ i ].bs );
-                if ( use_two_tex )
+                if ( use_two_tex || texture_stage )
                 {
-                    p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture[ i ].bs );
+                    p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture1[ i ].bs );
                 }
                 glVertex3fv( &OGLRender.TVertex[ i ].bx );
                 
@@ -259,9 +701,9 @@ void RenderDrawTriangles( void )
                 p_glSecondaryColor3fvEXT( &OGLRender.TColor2[ i ].cr );
                 p_glFogCoordfEXT( OGLRender.TFog[ i ].cf );
                 glTexCoord4fv( &OGLRender.TTexture[ i ].cs );
-                if ( use_two_tex )
+                if ( use_two_tex || texture_stage )
                 {
-                    p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture[ i ].cs );
+                    p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &OGLRender.TTexture1[ i ].cs );
                 }
                 glVertex3fv( &OGLRender.TVertex[ i ].cx );
             }
@@ -275,6 +717,11 @@ void RenderDrawTriangles( void )
             // the game's own alpha test has to be put back by hand.
             glAlphaFunc( OpenGL.AlphaTestFunction, OpenGL.AlphaReferenceValue );
         }
+    }
+
+    if ( texture_stage )
+    {
+        EndTextureStage( );
     }
   
     if ( ! InternalConfig.EXT_secondary_color )
@@ -661,7 +1108,7 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
     {
         maxoow = 1.0f / max( atmuoow, max( btmuoow, ctmuoow ) );
 
-        Textures->GetAspect( &hAspect, &wAspect );
+        Textures[ GR_TMU0 ]->GetAspect( &hAspect, &wAspect );
 
         pTS->as = a->tmuvtx[ 0 ].sow * wAspect * maxoow;
         pTS->at = a->tmuvtx[ 0 ].tow * hAspect * maxoow;
@@ -674,6 +1121,17 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
         pTS->aoow = atmuoow * maxoow;
         pTS->boow = btmuoow * maxoow;
         pTS->coow = ctmuoow * maxoow;
+
+        TTextureStruct *pTS1 = &OGLRender.TTexture1[ OGLRender.NumberOfTriangles ];
+        if ( TextureStageActive( ) )
+        {
+            Tmu1TriangleCoordinates( pTS1, a, b, c, atmuoow, btmuoow, ctmuoow );
+        }
+        else if ( InternalConfig.EXT_paletted_texture )
+        {
+            // AP88's alpha texture on GL unit 1 samples where TMU0 does.
+            *pTS1 = *pTS;
+        }
     }
 
     if( InternalConfig.FogEnable )
@@ -1148,9 +1606,12 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
         pV->by = b->y;
     }
 
+    bool texture_stage = TextureStageActive( );
+    TTextureStruct *pTS1 = &OGLRender.TTexture1[ MAXTRIANGLES ];
+
     if ( OpenGL.Texture )
     {
-        Textures->GetAspect( &hAspect, &wAspect );
+        Textures[ GR_TMU0 ]->GetAspect( &hAspect, &wAspect );
 
         pTS->as = a->tmuvtx[0].sow * wAspect; // / a->oow;
         pTS->at = a->tmuvtx[0].tow * hAspect; // / a->oow;
@@ -1160,6 +1621,15 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
         pTS->aq = pTS->bq = 0.0f;
         pTS->aoow = atmuoow;
         pTS->boow = btmuoow;
+    }
+
+    if ( texture_stage )
+    {
+        float tmu1HAspect;
+        float tmu1WAspect;
+        Textures[ GR_TMU1 ]->GetAspect( &tmu1HAspect, &tmu1WAspect );
+        Tmu1Coordinate( a, atmuoow, tmu1HAspect, tmu1WAspect, &pTS1->as );
+        Tmu1Coordinate( b, btmuoow, tmu1HAspect, tmu1WAspect, &pTS1->bs );
     }
 
     if ( InternalConfig.FogEnable )
@@ -1206,11 +1676,16 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
     {
         glEnable( GL_TEXTURE_2D );
 
-        Textures->MakeReady( );
+        Textures[ GR_TMU0 ]->MakeReady( );
     }
     else
     {
         glDisable( GL_TEXTURE_2D );
+    }
+
+    if ( texture_stage )
+    {
+        BeginTextureStage( );
     }
 
     if ( OpenGL.Blend )
@@ -1236,15 +1711,28 @@ void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap )
         glColor4fv( &pC->ar );
         p_glSecondaryColor3fvEXT( &pC2->ar );
         glTexCoord4fv( &pTS->as );
+        if ( texture_stage )
+        {
+            p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &pTS1->as );
+        }
         p_glFogCoordfEXT( pF->af );
         glVertex3fv( &pV->ax );
 
         glColor4fv( &pC->br );
         p_glSecondaryColor3fvEXT( &pC2->br );
         glTexCoord4fv( &pTS->bs );
+        if ( texture_stage )
+        {
+            p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &pTS1->bs );
+        }
         p_glFogCoordfEXT( pF->bf );
         glVertex3fv( &pV->bx );
     glEnd();
+
+    if ( texture_stage )
+    {
+        EndTextureStage( );
+    }
 
 #ifdef OPENGL_DEBUG
     GLErro( "Render::AddLine" );
@@ -1535,15 +2023,26 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
         pV->ay = a->y;
     }
 
+    bool texture_stage = TextureStageActive( );
+    TTextureStruct *pTS1 = &OGLRender.TTexture1[ MAXTRIANGLES ];
+
     if ( OpenGL.Texture )
     {
-        Textures->GetAspect( &hAspect, &wAspect );
+        Textures[ GR_TMU0 ]->GetAspect( &hAspect, &wAspect );
 
         pTS->as = a->tmuvtx[0].sow * wAspect;
         pTS->at = a->tmuvtx[0].tow * hAspect;
 
         pTS->aq = 0.0f;
         pTS->aoow = a->oow;
+    }
+
+    if ( texture_stage )
+    {
+        float tmu1HAspect;
+        float tmu1WAspect;
+        Textures[ GR_TMU1 ]->GetAspect( &tmu1HAspect, &tmu1WAspect );
+        Tmu1Coordinate( a, a->oow, tmu1HAspect, tmu1WAspect, &pTS1->as );
     }
 
     if( InternalConfig.FogEnable )
@@ -1579,11 +2078,16 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
     {
         glEnable( GL_TEXTURE_2D );
 
-        Textures->MakeReady( );
+        Textures[ GR_TMU0 ]->MakeReady( );
     }
     else
     {
         glDisable( GL_TEXTURE_2D );
+    }
+
+    if ( texture_stage )
+    {
+        BeginTextureStage( );
     }
 
     if ( OpenGL.Blend )
@@ -1609,9 +2113,18 @@ void RenderAddPoint( const GrVertex *a, bool unsnap )
         glColor4fv( &pC->ar );
         p_glSecondaryColor3fvEXT( &pC2->ar );
         glTexCoord4fv( &pTS->as );
+        if ( texture_stage )
+        {
+            p_glMultiTexCoord4fvARB( GL_TEXTURE1_ARB, &pTS1->as );
+        }
         p_glFogCoordfEXT( pF->af );
         glVertex3fv( &pV->ax );
     glEnd();
+
+    if ( texture_stage )
+    {
+        EndTextureStage( );
+    }
 
 #ifdef OPENGL_DEBUG
     GLErro( "Render::AddPoint" );

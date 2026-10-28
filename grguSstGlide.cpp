@@ -6,6 +6,11 @@
 #include "OGLTables.h"
 #include <new>
 
+// grTexDetailControl as 3dfx's Glide calls it for every TMU at grSstWinOpen.
+static const int detailBiasAtOpen = 0;
+static const FxU8 detailScaleAtOpen = 1;
+static const float detailMaximumAtOpen = 1.0f;
+
 static bool InterpretScreenResolution(GrScreenResolution_t eResolution, FxU32 &width, FxU32 &height)
 {
     if (( eResolution < GR_RESOLUTION_320x200 ) ||
@@ -116,10 +121,10 @@ grGlideInit( void )
 
     Glide.TextureMemory = UserConfig.TextureMemorySize * 1024 * 1024;
 
-    Textures = new PGTexture( Glide.TextureMemory );
-    if ( Textures == NULL )
+    // Each TMU has texture memory of its own, as large as the setting.
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
     {
-        Error( "Cannot allocate enough memory for Texture Buffer in User setting, using default" );
+        Textures[ tmu ] = new PGTexture( Glide.TextureMemory, tmu );
     }
 
     Glide.TexMemoryMaxPosition   = (FxU32)Glide.TextureMemory;
@@ -150,7 +155,11 @@ grGlideShutdown( void )
     grSstWinClose( );
 
     RenderFree( );
-    delete Textures;
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        delete Textures[ tmu ];
+        Textures[ tmu ] = NULL;
+    }
 }
 
 //*************************************************
@@ -184,20 +193,43 @@ grGlideSetState( const GrState *state )
     grFogColorValue( StateTemp.FogColorValue );
     grFogMode( StateTemp.FogMode );
     grCullMode( StateTemp.CullMode );
-    grTexClampMode( GR_TMU0, StateTemp.SClampMode, StateTemp.TClampMode );
-    grTexFilterMode( GR_TMU0, StateTemp.MinFilterMode, StateTemp.MagFilterMode );
-    grTexMipMapMode( GR_TMU0, StateTemp.MipMapMode, StateTemp.LodBlend );
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        const TmuState *tmuState = &StateTemp.Tmu[ tmu ];
+        grTexClampMode( tmu, tmuState->SClampMode, tmuState->TClampMode );
+        grTexFilterMode( tmu, tmuState->MinFilterMode, tmuState->MagFilterMode );
+        grTexMipMapMode( tmu, tmuState->MipMapMode, tmuState->LodBlend );
+        grTexDetailControl( tmu, tmuState->DetailBias, tmuState->DetailScale, tmuState->DetailMax );
+    }
     grColorCombine( StateTemp.ColorCombineFunction, StateTemp.ColorCombineFactor, 
                     StateTemp.ColorCombineLocal, StateTemp.ColorCombineOther, StateTemp.ColorCombineInvert );
     grAlphaCombine( StateTemp.AlphaFunction, StateTemp.AlphaFactor, StateTemp.AlphaLocal, StateTemp.AlphaOther, StateTemp.AlphaInvert );
-    grTexCombine( GR_TMU0, StateTemp.TextureCombineCFunction, StateTemp.TextureCombineCFactor,
-                  StateTemp.TextureCombineAFunction, StateTemp.TextureCombineAFactor,
-                  StateTemp.TextureCombineRGBInvert, StateTemp.TextureCombineAInvert );
+    // TMU0 last: its combine decides whether the texture is on, as before.
+    for ( int tmu = OGL_TMU_COUNT - 1; tmu >= GR_TMU0; tmu-- )
+    {
+        const TmuState *tmuState = &StateTemp.Tmu[ tmu ];
+        grTexCombine( tmu, tmuState->CombineCFunction, tmuState->CombineCFactor,
+                      tmuState->CombineAFunction, tmuState->CombineAFactor,
+                      tmuState->CombineRGBInvert, tmuState->CombineAInvert );
+    }
     grAlphaBlendFunction( StateTemp.AlphaBlendRgbSf, StateTemp.AlphaBlendRgbDf, StateTemp.AlphaBlendAlphaSf, StateTemp.AlphaBlendAlphaDf );
     grClipWindow( StateTemp.ClipMinX, StateTemp.ClipMinY, StateTemp.ClipMaxX, StateTemp.ClipMaxY );
     grSstOrigin( StateTemp.OriginInformation );
-    grTexSource( GR_TMU0, StateTemp.TexSource.StartAddress, StateTemp.TexSource.EvenOdd, &StateTemp.TexSource.Info );
-    grTexLodBiasValue(GR_TMU0, StateTemp.LodBias);
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        const TmuState *tmuState = &StateTemp.Tmu[ tmu ];
+        if ( tmuState->SourceSet )
+        {
+            GrTexInfo info;
+            info.smallLod = tmuState->SmallLod;
+            info.largeLod = tmuState->LargeLod;
+            info.aspectRatio = tmuState->AspectRatio;
+            info.format = tmuState->Format;
+            info.data = NULL;
+            grTexSource( tmu, tmuState->StartAddress, tmuState->EvenOdd, &info );
+        }
+        grTexLodBiasValue( tmu, tmuState->LodBias );
+    }
 }
 
 //*************************************************
@@ -418,6 +450,17 @@ grSstWinOpen(   FxU hwnd,
                     FXFALSE );
     grTexCombine( GR_TMU0,GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_NONE,
                 GR_COMBINE_FUNCTION_LOCAL, GR_COMBINE_FACTOR_NONE, FXFALSE, FXFALSE );
+    // TMU1 as 3dfx's Glide leaves every TMU at grSstWinOpen: switched off, so TMU0's other input is 0 until the program sets TMU1 up.
+    grTexClampMode( GR_TMU1, GR_TEXTURECLAMP_CLAMP, GR_TEXTURECLAMP_CLAMP );
+    grTexMipMapMode( GR_TMU1, GR_MIPMAP_DISABLE, FXFALSE );
+    grTexFilterMode( GR_TMU1, GR_TEXTUREFILTER_POINT_SAMPLED, GR_TEXTUREFILTER_POINT_SAMPLED );
+    grTexLodBiasValue( GR_TMU1, 0.0f );
+    grTexCombine( GR_TMU1, GR_COMBINE_FUNCTION_ZERO, GR_COMBINE_FACTOR_NONE,
+                  GR_COMBINE_FUNCTION_ZERO, GR_COMBINE_FACTOR_NONE, FXFALSE, FXFALSE );
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        grTexDetailControl( tmu, detailBiasAtOpen, detailScaleAtOpen, detailMaximumAtOpen );
+    }
     grAlphaControlsITRGBLighting( FXFALSE );
     grAlphaBlendFunction( GR_BLEND_ONE, GR_BLEND_ZERO, GR_BLEND_ONE, GR_BLEND_ZERO );
     grColorMask( FXTRUE, FXFALSE );
@@ -504,25 +547,29 @@ grSstWinClose( void )
     GlideMsg( "MaxA = %f\nMinA = %f\n", OGLRender.MaxA, OGLRender.MinA );
     GlideMsg( OGL_LOG_SEPARATE );
     GlideMsg( "Texture Information:\n" );
-    GlideMsg( "  565 = %d\n", Textures->Num_565_Tex );
-    GlideMsg( " 1555 = %d\n", Textures->Num_1555_Tex );
-    GlideMsg( " 4444 = %d\n", Textures->Num_4444_Tex );
-    GlideMsg( "  332 = %d\n", Textures->Num_332_Tex );
-    GlideMsg( " 8332 = %d\n", Textures->Num_8332_Tex );
-    GlideMsg( "Alpha = %d\n", Textures->Num_Alpha_Tex );
-    GlideMsg( " AI88 = %d\n", Textures->Num_AlphaIntensity88_Tex );
-    GlideMsg( " AI44 = %d\n", Textures->Num_AlphaIntensity44_Tex );
-    GlideMsg( " AP88 = %d\n", Textures->Num_AlphaPalette_Tex );
-    GlideMsg( "   P8 = %d\n", Textures->Num_Palette_Tex );
-    GlideMsg( "Inten = %d\n", Textures->Num_Intensity_Tex );
-    GlideMsg( "  YIQ = %d\n", Textures->Num_YIQ_Tex );
-    GlideMsg( " AYIQ = %d\n", Textures->Num_AYIQ_Tex );
-    GlideMsg( "Other = %d\n", Textures->Num_Other_Tex );
+    GlideMsg( "  565 = %d\n", Textures[ GR_TMU0 ]->Num_565_Tex );
+    GlideMsg( " 1555 = %d\n", Textures[ GR_TMU0 ]->Num_1555_Tex );
+    GlideMsg( " 4444 = %d\n", Textures[ GR_TMU0 ]->Num_4444_Tex );
+    GlideMsg( "  332 = %d\n", Textures[ GR_TMU0 ]->Num_332_Tex );
+    GlideMsg( " 8332 = %d\n", Textures[ GR_TMU0 ]->Num_8332_Tex );
+    GlideMsg( "Alpha = %d\n", Textures[ GR_TMU0 ]->Num_Alpha_Tex );
+    GlideMsg( " AI88 = %d\n", Textures[ GR_TMU0 ]->Num_AlphaIntensity88_Tex );
+    GlideMsg( " AI44 = %d\n", Textures[ GR_TMU0 ]->Num_AlphaIntensity44_Tex );
+    GlideMsg( " AP88 = %d\n", Textures[ GR_TMU0 ]->Num_AlphaPalette_Tex );
+    GlideMsg( "   P8 = %d\n", Textures[ GR_TMU0 ]->Num_Palette_Tex );
+    GlideMsg( "Inten = %d\n", Textures[ GR_TMU0 ]->Num_Intensity_Tex );
+    GlideMsg( "  YIQ = %d\n", Textures[ GR_TMU0 ]->Num_YIQ_Tex );
+    GlideMsg( " AYIQ = %d\n", Textures[ GR_TMU0 ]->Num_AYIQ_Tex );
+    GlideMsg( "Other = %d\n", Textures[ GR_TMU0 ]->Num_Other_Tex );
     GlideMsg( OGL_LOG_SEPARATE );
     GlideMsg( OGL_LOG_SEPARATE );
 #endif
 
-    Textures->Clear( );
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        Textures[ tmu ]->Clear( );
+    }
+    RenderDeleteTextureStage( );
 
     glDeleteTextures(1, &Glide.LFBTexture);
     delete[] OpenGL.oneBuf;
@@ -546,11 +593,13 @@ grSstQueryHardware( GrHwConfiguration *hwconfig )
 //  hwconfig->SSTs[0].type = GR_SSTTYPE_Voodoo2;
     hwconfig->SSTs[0].sstBoard.VoodooConfig.fbRam = UserConfig.FrameBufferMemorySize;
     hwconfig->SSTs[0].sstBoard.VoodooConfig.fbiRev = 2;
-    hwconfig->SSTs[0].sstBoard.VoodooConfig.nTexelfx = 1;
-//  hwconfig->SSTs[0].sstBoard.VoodooConfig.nTexelfx = 2;
+    hwconfig->SSTs[0].sstBoard.VoodooConfig.nTexelfx = OGL_TMU_COUNT;
     hwconfig->SSTs[0].sstBoard.VoodooConfig.sliDetect = FXFALSE;
-    hwconfig->SSTs[0].sstBoard.VoodooConfig.tmuConfig[0].tmuRev = 1;
-    hwconfig->SSTs[0].sstBoard.VoodooConfig.tmuConfig[0].tmuRam = UserConfig.TextureMemorySize;
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        hwconfig->SSTs[0].sstBoard.VoodooConfig.tmuConfig[tmu].tmuRev = 1;
+        hwconfig->SSTs[0].sstBoard.VoodooConfig.tmuConfig[tmu].tmuRam = UserConfig.TextureMemorySize;
+    }
 
     return FXTRUE;
 }

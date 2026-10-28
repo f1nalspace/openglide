@@ -261,8 +261,11 @@ void genPaletteMipmaps( FxU32 width, FxU32 height, FxU8 *data )
     }
 }
 
-PGTexture::PGTexture( int mem_size )
+PGTexture::PGTexture( int mem_size, int tmu )
 {
+    m_tmu = tmu;
+    m_wAspect = D1OVER256;
+    m_hAspect = D1OVER256;
     m_db = new TexDB( mem_size );
     m_palette_dirty = true;
     m_valid = false;
@@ -319,11 +322,11 @@ void PGTexture::DownloadMipMap( FxU32 startAddress, FxU32 evenOdd, GrTexInfo *in
         m_db->Add( startAddress, mip_offset, info, 0, &texNum, NULL);
 
         glBindTexture( GL_TEXTURE_2D, texNum );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.SClampMode );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TClampMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.TextureUnit[ m_tmu ].SClampMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TextureUnit[ m_tmu ].TClampMode );
     
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.MinFilterMode );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.MagFilterMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.TextureUnit[ m_tmu ].MinFilterMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.TextureUnit[ m_tmu ].MagFilterMode );
 
         if ( InternalConfig.EnableMipMaps && !InternalConfig.BuildMipMaps )
             glTexParameteri( GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, true );
@@ -404,6 +407,11 @@ void PGTexture::Source( FxU32 startAddress, FxU32 evenOdd, GrTexInfo *info )
     m_hAspect = texAspects[ info->aspectRatio ].h;
 
     m_valid = ( ( startAddress + TextureMemRequired( evenOdd, info ) ) <= m_tex_memory_size );
+}
+
+bool PGTexture::IsValid( void ) const
+{
+    return m_valid;
 }
 
 void PGTexture::DownloadTable( GrTexTable_t type, FxU32 *data, int first, int count )
@@ -558,7 +566,8 @@ bool PGTexture::MakeReady( void )
 
     case GR_TEXFMT_AP_88:
         ApplyKeyToPalette( );
-        if ( InternalConfig.EXT_paletted_texture && InternalConfig.ARB_multitexture )
+        // The alpha goes into a second texture on GL unit 1, which TMU1 needs when the texture stage's shader draws.
+        if ( InternalConfig.EXT_paletted_texture && InternalConfig.ARB_multitexture && ( m_tmu == GR_TMU0 ) && !OpenGL.TextureStageShader )
         {
             use_mipmap_ext   = false;
             pal_change_ptr   = &palette_changed;
@@ -606,11 +615,11 @@ bool PGTexture::MakeReady( void )
                    &texNum, use_two_textures ? &tex2Num : NULL );
 
         glBindTexture( GL_TEXTURE_2D, texNum );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.SClampMode );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TClampMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.TextureUnit[ m_tmu ].SClampMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TextureUnit[ m_tmu ].TClampMode );
     
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.MinFilterMode );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.MagFilterMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.TextureUnit[ m_tmu ].MinFilterMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.TextureUnit[ m_tmu ].MagFilterMode );
     
         if( use_mipmap_ext )
         {
@@ -622,11 +631,11 @@ bool PGTexture::MakeReady( void )
             p_glActiveTextureARB( GL_TEXTURE1_ARB );
 
             glBindTexture( GL_TEXTURE_2D, tex2Num );
-            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.SClampMode );
-            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TClampMode );
+            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.TextureUnit[ m_tmu ].SClampMode );
+            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TextureUnit[ m_tmu ].TClampMode );
         
-            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.MinFilterMode );
-            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.MagFilterMode );
+            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.TextureUnit[ m_tmu ].MinFilterMode );
+            glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.TextureUnit[ m_tmu ].MagFilterMode );
 
             if( use_mipmap_ext2 )
             {
@@ -793,21 +802,21 @@ bool PGTexture::MakeReady( void )
         }
     }
 
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.SClampMode );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TClampMode );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.TextureUnit[ m_tmu ].SClampMode );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TextureUnit[ m_tmu ].TClampMode );
     
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.MinFilterMode );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.MagFilterMode );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.TextureUnit[ m_tmu ].MinFilterMode );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.TextureUnit[ m_tmu ].MagFilterMode );
     
     if ( use_two_textures )
     {
         p_glActiveTextureARB( GL_TEXTURE1_ARB );
         
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.SClampMode );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TClampMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, OpenGL.TextureUnit[ m_tmu ].SClampMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, OpenGL.TextureUnit[ m_tmu ].TClampMode );
         
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.MinFilterMode );
-        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.MagFilterMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, OpenGL.TextureUnit[ m_tmu ].MinFilterMode );
+        glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, OpenGL.TextureUnit[ m_tmu ].MagFilterMode );
         
         p_glActiveTextureARB( GL_TEXTURE0_ARB );
     }

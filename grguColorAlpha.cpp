@@ -143,9 +143,12 @@ grColorCombine( GrCombineFunction_t function, GrCombineFactor_t factor,
 
     // Need to verify the statement below because of the factor will only be used if there
     // is need, so we may need not to enable the texture
+    // Without the texture stage's shader, a TMU0 that gives no colour switches the texture off, since the fixed pipeline
+    // would draw the texel. The shader gives the 0 itself and keeps the texture's alpha, whatever grTexCombine set last.
+    bool tmu0GivesColor = OpenGL.TextureStageShader || ( Glide.State.Tmu[ GR_TMU0 ].CombineCFunction != GR_COMBINE_FUNCTION_ZERO );
     if ( ( Glide.COther &&
            ( other == GR_COMBINE_OTHER_TEXTURE ) &&
-           ( Glide.State.TextureCombineCFunction != GR_COMBINE_FUNCTION_ZERO ) ) ||
+           tmu0GivesColor ) ||
          ( ( factor == GR_COMBINE_FACTOR_TEXTURE_ALPHA ) ||
            ( factor == GR_COMBINE_FACTOR_ONE_MINUS_TEXTURE_ALPHA ) ||
            ( factor == GR_COMBINE_FACTOR_TEXTURE_RGB ) ) )
@@ -160,13 +163,13 @@ grColorCombine( GrCombineFunction_t function, GrCombineFactor_t factor,
     if ( ( Glide.State.ColorCombineFactor == GR_COMBINE_FACTOR_TEXTURE_ALPHA ) &&
          ( Glide.State.ColorCombineOther == GR_COMBINE_OTHER_TEXTURE ) )
     {
-        glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL );
+        OpenGL.TextureEnvMode = GL_DECAL;
     }
     else
     if ( ( Glide.State.ColorCombineFactor == GR_COMBINE_FACTOR_TEXTURE_RGB ) &&
          ( Glide.State.ColorCombineOther == GR_COMBINE_OTHER_TEXTURE ) )
     {
-        glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_BLEND );
+        OpenGL.TextureEnvMode = GL_BLEND;
     }
     else
 /*    if (( Glide.State.ColorCombineFactor == GR_COMBINE_FACTOR_ONE ) &&
@@ -178,8 +181,9 @@ grColorCombine( GrCombineFunction_t function, GrCombineFactor_t factor,
     }
     else*/
     {
-        glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
+        OpenGL.TextureEnvMode = GL_MODULATE;
     }
+    glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, OpenGL.TextureEnvMode );
 
     OpenGL.Texture = ( OpenGL.ColorTexture || ( OpenGL.Blend && OpenGL.AlphaTexture ) );
 }
@@ -524,7 +528,10 @@ grChromakeyValue( GrColor_t value )
 //                    OpenGL.ChromaColor.A );
 
 //    Textures->ChromakeyValue( value );
-    Textures->ChromakeyValue( OpenGL.ChromaColor );
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        Textures[ tmu ]->ChromakeyValue( OpenGL.ChromaColor );
+    }
 
     Glide.State.ChromakeyValue = value;
 }
@@ -541,7 +548,10 @@ grChromakeyMode( GrChromakeyMode_t mode )
 
     RenderDrawTriangles( );
 
-    Textures->ChromakeyMode( mode );
+    for ( int tmu = GR_TMU0; tmu < OGL_TMU_COUNT; tmu++ )
+    {
+        Textures[ tmu ]->ChromakeyMode( mode );
+    }
 
     Glide.State.ChromaKeyMode = mode;
 

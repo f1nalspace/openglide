@@ -17,6 +17,31 @@
 #include "PGUTexture.h"
 
 
+// A Voodoo2's TMUs; calls for a third TMU are dropped.
+static bool TmuExists( GrChipID_t tmu )
+{
+    return ( tmu >= GR_TMU0 ) && ( tmu < OGL_TMU_COUNT );
+}
+
+// GL unit n holds TMU n's texture. Texture environment state is per unit, so it is set with that unit active; unit 0 stays the active one.
+static void SetTmuLodBias( GrChipID_t tmu, float bias )
+{
+    bool otherUnit = ( tmu != GR_TMU0 );
+    if ( otherUnit && !InternalConfig.ARB_multitexture )
+    {
+        return;
+    }
+    if ( otherUnit )
+    {
+        p_glActiveTextureARB( GL_TEXTURE0_ARB + tmu );
+    }
+    glTexEnvf( GL_TEXTURE_FILTER_CONTROL_EXT, GL_TEXTURE_LOD_BIAS_EXT, bias );
+    if ( otherUnit )
+    {
+        p_glActiveTextureARB( GL_TEXTURE0_ARB );
+    }
+}
+
 // Functions
 
 //*************************************************
@@ -58,21 +83,23 @@ grTexSource( GrChipID_t tmu,
     GlideMsg( "grTexSource( %d, %d, %d, --- )\n", tmu, startAddress, evenOdd );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
 
     RenderDrawTriangles( );
 
-    Glide.State.TexSource.StartAddress = startAddress;
-    Glide.State.TexSource.EvenOdd = evenOdd;
-    Glide.State.TexSource.Info.aspectRatio = info->aspectRatio;
-    Glide.State.TexSource.Info.format = info->format;
-    Glide.State.TexSource.Info.largeLod = info->largeLod;
-    Glide.State.TexSource.Info.smallLod = info->smallLod;
+    TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+    tmuState->SourceSet = 1;
+    tmuState->StartAddress = startAddress;
+    tmuState->EvenOdd = (FxU8)evenOdd;
+    tmuState->AspectRatio = (FxI8)info->aspectRatio;
+    tmuState->Format = (FxU8)info->format;
+    tmuState->LargeLod = (FxI8)info->largeLod;
+    tmuState->SmallLod = (FxI8)info->smallLod;
 
-    Textures->Source( startAddress, evenOdd, info );    
+    Textures[ tmu ]->Source( startAddress, evenOdd, info );
 }
 
 //*************************************************
@@ -85,7 +112,7 @@ grTexTextureMemRequired( FxU32 dwEvenOdd, GrTexInfo *texInfo )
     GlideMsg( "grTexTextureMemRequired( %u, --- )\n", dwEvenOdd );
 #endif
 
-    return Textures->TextureMemRequired( dwEvenOdd, texInfo );
+    return PGTexture::TextureMemRequired( dwEvenOdd, texInfo );
 }
 
 //*************************************************
@@ -102,7 +129,7 @@ grTexDownloadMipMap( GrChipID_t tmu,
         startAddress, evenOdd );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
@@ -110,7 +137,7 @@ grTexDownloadMipMap( GrChipID_t tmu,
     RenderDrawTriangles( );
 
     info->smallLod = info->largeLod;
-    Textures->DownloadMipMap( startAddress, evenOdd, info );
+    Textures[ tmu ]->DownloadMipMap( startAddress, evenOdd, info );
 }
 
 //*************************************************
@@ -129,7 +156,7 @@ grTexDownloadMipMapLevel( GrChipID_t        tmu,
         tmu, startAddress, thisLod, largeLod, aspectRatio, format, evenOdd, data );
 #endif
 
-    if ( ( tmu != GR_TMU0 ) )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
@@ -142,7 +169,7 @@ grTexDownloadMipMapLevel( GrChipID_t        tmu,
     info.format         = format;
     info.data           = data;
 
-    Textures->DownloadMipMap( startAddress, evenOdd, &info );
+    Textures[ tmu ]->DownloadMipMap( startAddress, evenOdd, &info );
 }
 
 //*************************************************
@@ -163,7 +190,7 @@ grTexDownloadMipMapLevelPartial( GrChipID_t        tmu,
         tmu, startAddress, thisLod, largeLod, aspectRatio, format, evenOdd, start, end );
 #endif
 
-    if ( ( tmu != GR_TMU0 ) )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
@@ -176,7 +203,7 @@ grTexDownloadMipMapLevelPartial( GrChipID_t        tmu,
     info.format      = format;
     info.data        = data;
 
-    Textures->DownloadMipMapPartial( startAddress, evenOdd, &info, start, end );
+    Textures[ tmu ]->DownloadMipMapPartial( startAddress, evenOdd, &info, start, end );
 }
 
 //*************************************************
@@ -192,25 +219,26 @@ grTexClampMode( GrChipID_t tmu,
         tmu, s_clampmode, t_clampmode );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
 
     RenderDrawTriangles( );
 
-    Glide.State.SClampMode = s_clampmode;
-    Glide.State.TClampMode = t_clampmode;
+    Glide.State.Tmu[ tmu ].SClampMode = (FxU8)s_clampmode;
+    Glide.State.Tmu[ tmu ].TClampMode = (FxU8)t_clampmode;
 
+    OGLTextureUnit *unit = &OpenGL.TextureUnit[ tmu ];
     switch ( s_clampmode )
     {
-    case GR_TEXTURECLAMP_CLAMP:     OpenGL.SClampMode = GL_CLAMP_TO_EDGE;   break;
-    case GR_TEXTURECLAMP_WRAP:      OpenGL.SClampMode = GL_REPEAT;  break;
+    case GR_TEXTURECLAMP_CLAMP:     unit->SClampMode = GL_CLAMP_TO_EDGE;   break;
+    case GR_TEXTURECLAMP_WRAP:      unit->SClampMode = GL_REPEAT;  break;
     }
     switch ( t_clampmode )
     {
-    case GR_TEXTURECLAMP_CLAMP:     OpenGL.TClampMode = GL_CLAMP_TO_EDGE;   break;
-    case GR_TEXTURECLAMP_WRAP:      OpenGL.TClampMode = GL_REPEAT;  break;
+    case GR_TEXTURECLAMP_CLAMP:     unit->TClampMode = GL_CLAMP_TO_EDGE;   break;
+    case GR_TEXTURECLAMP_WRAP:      unit->TClampMode = GL_REPEAT;  break;
     }
 
 #ifdef OPENGL_DEBUG
@@ -231,59 +259,61 @@ grTexFilterMode( GrChipID_t tmu,
         tmu, minfilter_mode, magfilter_mode );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
 
     RenderDrawTriangles( );
 
-    Glide.State.MinFilterMode = minfilter_mode;
-    Glide.State.MagFilterMode = magfilter_mode;
+    TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+    OGLTextureUnit *unit = &OpenGL.TextureUnit[ tmu ];
+    tmuState->MinFilterMode = (FxU8)minfilter_mode;
+    tmuState->MagFilterMode = (FxU8)magfilter_mode;
 
     switch ( minfilter_mode )
     {
     case GR_TEXTUREFILTER_POINT_SAMPLED:
-        if ( ( Glide.State.MipMapMode != GR_MIPMAP_DISABLE ) && 
+        if ( ( tmuState->MipMapMode != GR_MIPMAP_DISABLE ) && 
              ( InternalConfig.EnableMipMaps ) )
         {
-            if ( Glide.State.LodBlend )
+            if ( tmuState->LodBlend )
             {
-                OpenGL.MinFilterMode = GL_NEAREST_MIPMAP_LINEAR;
+                unit->MinFilterMode = GL_NEAREST_MIPMAP_LINEAR;
             }
             else
             {
-                OpenGL.MinFilterMode = GL_NEAREST_MIPMAP_NEAREST;
+                unit->MinFilterMode = GL_NEAREST_MIPMAP_NEAREST;
             }
         }
         else
         {
-            OpenGL.MinFilterMode = GL_NEAREST;
+            unit->MinFilterMode = GL_NEAREST;
         }
         break;
 
     case GR_TEXTUREFILTER_BILINEAR:
         if ( InternalConfig.EnableMipMaps )
         {
-            if ( Glide.State.LodBlend )
+            if ( tmuState->LodBlend )
             {
-                OpenGL.MinFilterMode = GL_LINEAR_MIPMAP_LINEAR;
+                unit->MinFilterMode = GL_LINEAR_MIPMAP_LINEAR;
             }
             else
             {
-                OpenGL.MinFilterMode = GL_LINEAR_MIPMAP_NEAREST;
+                unit->MinFilterMode = GL_LINEAR_MIPMAP_NEAREST;
             }
         }
         else
         {
-            OpenGL.MinFilterMode = GL_LINEAR;
+            unit->MinFilterMode = GL_LINEAR;
         }
         break;
     }
     switch ( magfilter_mode )
     {
-    case GR_TEXTUREFILTER_POINT_SAMPLED:    OpenGL.MagFilterMode = GL_NEAREST;      break;
-    case GR_TEXTUREFILTER_BILINEAR:         OpenGL.MagFilterMode = GL_LINEAR;       break;
+    case GR_TEXTUREFILTER_POINT_SAMPLED:    unit->MagFilterMode = GL_NEAREST;      break;
+    case GR_TEXTUREFILTER_BILINEAR:         unit->MagFilterMode = GL_LINEAR;       break;
     }
 
 #ifdef OPENGL_DEBUG
@@ -304,17 +334,18 @@ grTexMipMapMode( GrChipID_t     tmu,
         tmu, mode, lodBlend );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
 
-    Glide.State.MipMapMode = mode;
-    Glide.State.LodBlend = lodBlend;
+    TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+    tmuState->MipMapMode = (FxU8)mode;
+    tmuState->LodBlend = (FxU8)lodBlend;
 
-    grTexFilterMode( GR_TMU0,
-                Glide.State.MinFilterMode,
-                Glide.State.MagFilterMode );
+    grTexFilterMode( tmu,
+                tmuState->MinFilterMode,
+                tmuState->MagFilterMode );
 
 #ifdef OPENGL_DEBUG
     GLErro( "grTexMipMapMode" );
@@ -339,7 +370,7 @@ grTexCalcMemRequired( GrLOD_t lodmin, GrLOD_t lodmax,
     texInfo.largeLod    = lodmax;
     texInfo.smallLod    = lodmin;
 
-    return Textures->TextureMemRequired( 0, &texInfo );
+    return PGTexture::TextureMemRequired( 0, &texInfo );
 }
 
 //*************************************************
@@ -357,14 +388,14 @@ grTexDownloadTablePartial( GrChipID_t   tmu,
         tmu, type, start, end );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
 
     RenderDrawTriangles( );
 
-    Textures->DownloadTable( type, ((FxU32*)data) + start, start, end + 1 - start );
+    Textures[ tmu ]->DownloadTable( type, ((FxU32*)data) + start, start, end + 1 - start );
 }
 
 //*************************************************
@@ -379,14 +410,14 @@ grTexDownloadTable( GrChipID_t   tmu,
     GlideMsg( "grTexDownloadTable( %d, %d, --- )\n", tmu, type );
 #endif
 
-    if ( tmu != GR_TMU0 )
+    if ( !TmuExists( tmu ) )
     {
         return;
     }
 
     RenderDrawTriangles( );
 
-    Textures->DownloadTable( type, (FxU32*)data, 0, 256 );
+    Textures[ tmu ]->DownloadTable( type, (FxU32*)data, 0, 256 );
 }
 
 //*************************************************
@@ -398,12 +429,17 @@ grTexLodBiasValue( GrChipID_t tmu, float bias )
         tmu, bias );
 #endif
 
+    if ( !TmuExists( tmu ) )
+    {
+        return;
+    }
+
     RenderDrawTriangles();
-    Glide.State.LodBias = bias;
+    Glide.State.Tmu[ tmu ].LodBias = bias;
 
     if ( InternalConfig.EXT_texture_lod_bias )
     {
-        glTexEnvf( GL_TEXTURE_FILTER_CONTROL_EXT, GL_TEXTURE_LOD_BIAS_EXT, bias );
+        SetTmuLodBias( tmu, bias );
     }
 }
 
@@ -423,20 +459,26 @@ grTexCombine( GrChipID_t tmu,
         rgb_invert, alpha_invert );
 #endif
 
-	// Ignoring TMU as we are only emulating Glide and assuming a well behaviored program
-//    if ( tmu != GR_TMU0 )
-//    {
-//        return;
-//    }
+    if ( !TmuExists( tmu ) )
+    {
+        return;
+    }
 
     RenderDrawTriangles( );
 
-    Glide.State.TextureCombineCFunction = rgb_function;
-    Glide.State.TextureCombineCFactor   = rgb_factor;
-    Glide.State.TextureCombineAFunction = alpha_function;
-    Glide.State.TextureCombineAFactor   = alpha_factor;
-    Glide.State.TextureCombineRGBInvert = rgb_invert;
-    Glide.State.TextureCombineAInvert   = alpha_invert;
+    TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+    tmuState->CombineCFunction = (FxU8)rgb_function;
+    tmuState->CombineCFactor   = (FxU8)rgb_factor;
+    tmuState->CombineAFunction = (FxU8)alpha_function;
+    tmuState->CombineAFactor   = (FxU8)alpha_factor;
+    tmuState->CombineRGBInvert = (FxU8)rgb_invert;
+    tmuState->CombineAInvert   = (FxU8)alpha_invert;
+
+    // Only TMU0 hands its output to the colour and alpha units; TMU1 feeds TMU0's other input.
+    if ( tmu != GR_TMU0 )
+    {
+        return;
+    }
 
     if ( ( rgb_function != GR_COMBINE_FUNCTION_ZERO ) ||
          ( alpha_function != GR_COMBINE_FUNCTION_ZERO ) )
@@ -634,13 +676,14 @@ grTexNCCTable( GrChipID_t tmu, GrNCCTable_t NCCTable )
     GlideMsg( "grTexNCCTable( %d, %u )\n", tmu, NCCTable );
 #endif
 
-	// Ignoring TMU as we are only emulating Glide and assuming a well behaviored program
-//    if ( tmu != GR_TMU0 )
-//    {
-//        return;
-//    }
+    if ( !TmuExists( tmu ) )
+    {
+        return;
+    }
 
-	Textures->NCCTable( NCCTable );
+    RenderDrawTriangles( );
+
+    Textures[ tmu ]->NCCTable( NCCTable );
 }
 
 //*************************************************
@@ -654,6 +697,18 @@ grTexDetailControl( GrChipID_t tmu,
     GlideMsg( "grTexDetailControl( %d, %d, %d, %-4.2f )\n",
         tmu, lod_bias, detail_scale, detail_max );
 #endif
+
+    if ( !TmuExists( tmu ) )
+    {
+        return;
+    }
+
+    RenderDrawTriangles( );
+
+    TmuState *tmuState = &Glide.State.Tmu[ tmu ];
+    tmuState->DetailBias = (FxI8)lod_bias;
+    tmuState->DetailScale = detail_scale;
+    tmuState->DetailMax = detail_max;
 }
 
 //*************************************************
@@ -883,7 +938,10 @@ guTexMemReset( void )
 #endif
 
     UTextures.MemReset( );
-    Textures->Clear( );
+    for ( int index = GR_TMU0; index < OGL_TMU_COUNT; index++ )
+    {
+        Textures[ index ]->Clear( );
+    }
 }
 
 //*************************************************

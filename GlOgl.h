@@ -93,11 +93,36 @@ struct BufferStruct
     FxU16                   *Address;
 };
 
-struct TexSourceStruct
+// The TMUs of a Voodoo2: TMU1's output is TMU0's "other", TMU0's output is the texture of the colour and alpha units.
+#define OGL_TMU_COUNT           2
+
+// One TMU's state. The fields are small on purpose: grGlideGetState keeps both TMUs and the rest of
+// GlideState inside Glide 2's GrState of 312 bytes.
+struct TmuState
 {
     FxU32       StartAddress;
-    FxU32       EvenOdd;
-    GrTexInfo   Info;
+    FxFloat     LodBias;
+    FxFloat     DetailMax;
+    FxI8        DetailBias;
+    FxU8        DetailScale;
+    FxU8        SourceSet;
+    FxU8        EvenOdd;
+    FxI8        SmallLod;
+    FxI8        LargeLod;
+    FxI8        AspectRatio;
+    FxU8        Format;
+    FxU8        SClampMode;
+    FxU8        TClampMode;
+    FxU8        MinFilterMode;
+    FxU8        MagFilterMode;
+    FxU8        MipMapMode;
+    FxU8        LodBlend;
+    FxU8        CombineCFunction;
+    FxU8        CombineCFactor;
+    FxU8        CombineAFunction;
+    FxU8        CombineAFactor;
+    FxU8        CombineRGBInvert;
+    FxU8        CombineAInvert;
 };
 
 /*
@@ -138,12 +163,6 @@ struct GlideState
     GrColor_t               FogColorValue;
     GrFogMode_t             FogMode;
     GrCullMode_t            CullMode;
-    GrTextureClampMode_t    SClampMode;
-    GrTextureClampMode_t    TClampMode;
-    GrTextureFilterMode_t   MinFilterMode;
-    GrTextureFilterMode_t   MagFilterMode;
-    GrMipMapMode_t          MipMapMode;
-    FxBool                  LodBlend;
     GrCombineFunction_t     ColorCombineFunction;
     GrCombineFactor_t       ColorCombineFactor;
     GrCombineLocal_t        ColorCombineLocal;
@@ -154,14 +173,7 @@ struct GlideState
     GrCombineLocal_t        AlphaLocal;
     GrCombineOther_t        AlphaOther;
     FxBool                  AlphaInvert;
-    GrCombineFunction_t     TextureCombineCFunction;
-    GrCombineFactor_t       TextureCombineCFactor;
-    GrCombineFunction_t     TextureCombineAFunction;
-    GrCombineFactor_t       TextureCombineAFactor;
-    FxBool                  TextureCombineRGBInvert;
-    FxBool                  TextureCombineAInvert;
     GrOriginLocation_t      OriginInformation;
-    TexSourceStruct         TexSource;
     GrAlphaBlendFnc_t       AlphaBlendRgbSf;
     GrAlphaBlendFnc_t       AlphaBlendRgbDf;
     GrAlphaBlendFnc_t       AlphaBlendAlphaSf;
@@ -173,8 +185,10 @@ struct GlideState
     GrColorFormat_t         ColorFormat;
     FxU32                   STWHint;
     FxBool                  VRetrace;
-    FxFloat		    LodBias;
+    TmuState                Tmu[ OGL_TMU_COUNT ];
 };
+
+static_assert( sizeof( GlideState ) <= sizeof( GrState ), "grGlideGetState copies GlideState into a GrState" );
 
 struct GlideStruct
 {
@@ -200,6 +214,15 @@ struct GlideStruct
     int                     TextureMemory;
 };
 
+// The GL sampling of one TMU's texture, set by grTexClampMode and grTexFilterMode.
+struct OGLTextureUnit
+{
+    GLenum                  SClampMode;
+    GLenum                  TClampMode;
+    GLenum                  MinFilterMode;
+    GLenum                  MagFilterMode;
+};
+
 struct OpenGLStruct
 {
     bool                    GlideInit;
@@ -220,11 +243,11 @@ struct OpenGLStruct
     GLfloat                 DepthBiasLevel;
     GLenum                  DepthFunction;
     GLenum                  RenderBuffer;
-    GLenum                  SClampMode;
-    GLenum                  TClampMode;
-    GLenum                  MinFilterMode;
-    GLenum                  MagFilterMode;
-    GLenum                  TextureMode;
+    OGLTextureUnit          TextureUnit[ OGL_TMU_COUNT ];
+    // What grColorCombine set as GL_TEXTURE_ENV_MODE; the texture stage's shader applies it the same way.
+    GLenum                  TextureEnvMode;
+    // The texture stage's shader can draw: GLSL is there and the program linked.
+    bool                    TextureStageShader;
     GLenum                  SrcBlend;
     GLenum                  DstBlend;
     GLenum                  SrcAlphaBlend;

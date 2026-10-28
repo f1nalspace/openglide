@@ -139,6 +139,7 @@ grGet( FxU32 pname, FxU32 plength, FxI32 *params )
     static FxU32 chipMem[3] = { 0x400000, 0x400000, 0x00 };
     static FxU32 chipRev[2] = { 0x02, 0x01 };
     static FxU32 texAlign = 0x08;
+    static FxU32 tmuCount = OGL_TMU_COUNT;
     static const struct {
         FxU32 name;
         FxU32 len;
@@ -159,7 +160,7 @@ grGet( FxU32 pname, FxU32 plength, FxI32 *params )
         { GR_MEMORY_UMA, 4,               &chipMem[2] },
         { GR_NUM_BOARDS, 4,               &dataU32[1] },
         { GR_NUM_FB, 4,                   &dataU32[1] },
-        { GR_NUM_TMU, 4,                  &dataU32[1] },
+        { GR_NUM_TMU, 4,                  &tmuCount },
         { GR_REVISION_FB, 4,              &chipRev[0] },
         { GR_REVISION_TMU, 4,             &chipRev[1] },
         { GR_SUPPORTS_PASSTHRU, 4,        &dataU32[1] },
@@ -316,12 +317,29 @@ grGetProcAddress( char *procName )
     return 0;
 }
 
+// 3dfx's Glide 3 derives the S/T/W hints from the vertex layout. TMU1 takes its own S and T only with GR_STWHINT_ST_DIFF_TMU1,
+// so an ST1 in the layout sets it; without, TMU1 samples with TMU0's coordinates.
+static void UpdateTmu1StHint( void )
+{
+    bool ownST = vertex3x.vlut[ GR_PARAM_IDX( GR_PARAM_ST1 ) ] != 0;
+    FxU32 hint = Glide.State.STWHint & ~GR_STWHINT_ST_DIFF_TMU1;
+    if ( ownST )
+    {
+        hint |= GR_STWHINT_ST_DIFF_TMU1;
+    }
+    if ( hint != Glide.State.STWHint )
+    {
+        grHints( GR_HINT_STWHINT, hint );
+    }
+}
+
 FX_ENTRY FxBool FX_CALL 
 grReset( FxU32 what )
 {
     switch (what) {
         case GR_VERTEX_PARAMETER:
             vertex3x.reset();
+            UpdateTmu1StHint( );
             break;
         default:
             break;
@@ -338,6 +356,7 @@ grVertexLayout(FxU32 param, FxI32 offset, FxU32 mode)
     }
     vertex3x.vvars(param, offset, mode);
     vertex3x.debug();
+    UpdateTmu1StHint( );
 }
 
 FX_ENTRY void FX_CALL
@@ -350,6 +369,7 @@ FX_ENTRY void FX_CALL
 grGlideSetVertexLayout( const void *layout )
 {
     vertex3x.store(layout);
+    UpdateTmu1StHint( );
 }
 
 FX_ENTRY void FX_CALL

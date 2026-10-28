@@ -44,6 +44,25 @@ extern PFNGLGETCOLORTABLEPARAMETERIVEXTPROC     p_glGetColorTableParameterivEXT;
 extern PFNGLGETCOLORTABLEPARAMETERFVEXTPROC     p_glGetColorTableParameterfvEXT;
 
 extern PFNGLBLENDFUNCSEPARATEEXTPROC            p_glBlendFuncSeparateEXT;
+// GLSL, for the texture stage's shader; all NULL without it.
+extern PFNGLCREATESHADERPROC                    p_glCreateShader;
+extern PFNGLSHADERSOURCEPROC                    p_glShaderSource;
+extern PFNGLCOMPILESHADERPROC                   p_glCompileShader;
+extern PFNGLGETSHADERIVPROC                     p_glGetShaderiv;
+extern PFNGLGETSHADERINFOLOGPROC                p_glGetShaderInfoLog;
+extern PFNGLDELETESHADERPROC                    p_glDeleteShader;
+extern PFNGLCREATEPROGRAMPROC                   p_glCreateProgram;
+extern PFNGLATTACHSHADERPROC                    p_glAttachShader;
+extern PFNGLLINKPROGRAMPROC                     p_glLinkProgram;
+extern PFNGLGETPROGRAMIVPROC                    p_glGetProgramiv;
+extern PFNGLGETPROGRAMINFOLOGPROC               p_glGetProgramInfoLog;
+extern PFNGLDELETEPROGRAMPROC                   p_glDeleteProgram;
+extern PFNGLUSEPROGRAMPROC                      p_glUseProgram;
+extern PFNGLGETUNIFORMLOCATIONPROC              p_glGetUniformLocation;
+extern PFNGLUNIFORM1IPROC                       p_glUniform1i;
+extern PFNGLUNIFORM1FPROC                       p_glUniform1f;
+extern PFNGLUNIFORM2FPROC                       p_glUniform2f;
+extern PFNGLUNIFORM4FVPROC                      p_glUniform4fv;
 
 
 void APIENTRY DummyV( const void *a );

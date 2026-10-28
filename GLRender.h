@@ -76,6 +76,8 @@ struct RenderStruct
 	TColorStruct	*TColor;
 	TColorStruct	*TColor2;
 	TTextureStruct	*TTexture;
+	// TMU1's coordinates, on GL unit 1.
+	TTextureStruct	*TTexture1;
 	TVertexStruct	*TVertex;
 	TFogStruct		*TFog;
 	long NumberOfTriangles;
@@ -107,6 +109,9 @@ void RenderAddTriangle( const GrVertex *a, const GrVertex *b, const GrVertex *c,
 void RenderAddLine( const GrVertex *a, const GrVertex *b, bool unsnap );
 void RenderAddPoint( const GrVertex *a, bool unsnap );
 void RenderDrawTriangles( void );
+// The texture stage's shader: TMU1, then TMU0, as a Voodoo2 combines them. Made when the GL context is there, deleted with the window.
+void RenderCreateTextureStage( void );
+void RenderDeleteTextureStage( void );
 
 // Main Render variables
 extern RenderStruct		    OGLRender;
