@@ -114,6 +114,8 @@ grBufferSwap( int swap_interval )
 
     annotate_stat();
 
+    AnnounceBufferSwap( );
+
     if ( UserConfig.PresentHook )
     {
         UserConfig.PresentHook( );
@@ -184,7 +186,7 @@ grRenderBuffer( GrBuffer_t dwBuffer )
     // Valid parameters are only FRONT and BACK ( 0x0 and 0x1 )
     OpenGL.RenderBuffer = GL_FRONT + dwBuffer;
 
-    glDrawBuffer( OpenGL.RenderBuffer );
+    SelectDrawBuffer( dwBuffer );
 
 #ifdef OPENGL_DEBUG
     GLErro( "grRenderBuffer" );

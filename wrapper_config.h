@@ -15,6 +15,12 @@
 #define WRAPPER_MESSAGE_INFO                (0)
 #define WRAPPER_MESSAGE_ERROR               (1)
 
+/* What setConfigBufferHook's hook is told: the drawing or the reading that follows goes to buffer (GR_BUFFER_FRONTBUFFER or
+ * GR_BUFFER_BACKBUFFER), or grBufferSwap has completed the frame and is about to swap (buffer is GR_BUFFER_BACKBUFFER). */
+#define WRAPPER_BUFFER_DRAW                 (0)
+#define WRAPPER_BUFFER_READ                 (1)
+#define WRAPPER_BUFFER_SWAP                 (2)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -26,6 +32,7 @@ FX_ENTRY void FX_CALL setConfigWindow(int width, int height, int offset_x);
 FX_ENTRY void FX_CALL setConfigWindowOffset(int width, int height, int offset_x, int offset_y);
 FX_ENTRY void FX_CALL setConfigPresentHook(void (*present_hook)(void));
 FX_ENTRY void FX_CALL setConfigMessages(void (*messages)(int severity, const char *text));
+FX_ENTRY void FX_CALL setConfigBufferHook(void (*buffer_hook)(int event, int buffer));
 
 #ifdef __cplusplus
 }

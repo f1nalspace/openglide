@@ -55,8 +55,7 @@ grLfbLock( GrLock_t dwType,
     {
         FxU32 j;
 
-        glReadBuffer( dwBuffer == GR_BUFFER_BACKBUFFER
-                      ? GL_BACK : GL_FRONT );
+        SelectReadBuffer( dwBuffer );
 
         if ((dwBuffer & 0xFEU) == 0)
         {   /* FRONT/BACK read-back */
@@ -337,8 +336,7 @@ grLfbUnlock( GrLock_t dwType, GrBuffer_t dwBuffer )
 
             glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
             glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE );
-            glDrawBuffer( Glide.DstBuffer.Buffer == GR_BUFFER_BACKBUFFER
-                        ? GL_BACK : GL_FRONT );
+            SelectDrawBuffer( Glide.DstBuffer.Buffer );
 
             glBegin( GL_QUADS );
                 glColor3f( 1.0f, 1.0f, 1.0f );
@@ -357,7 +355,7 @@ grLfbUnlock( GrLock_t dwType, GrBuffer_t dwBuffer )
             glEnd( );
 
             glPopAttrib( );
-            glDrawBuffer( OpenGL.RenderBuffer );
+            SelectDrawBuffer( Glide.State.RenderBuffer );
 
             if ( Glide.DstBuffer.Buffer != GR_BUFFER_BACKBUFFER )
             {

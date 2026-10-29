@@ -639,6 +639,49 @@ FX_ENTRY void FX_CALL setConfigMessages(void (*messages)(int severity, const cha
 #endif
 }
 
+/* An embedding whose surface has no front buffer of its own -- an EGL pbuffer has a back buffer only -- keeps the front buffer
+ * itself: the hook binds the surface that stands for the buffer, and OpenGLide draws or reads that surface's back buffer. Kept
+ * across grGlideInit, like the messages; NULL takes it away again.
+ */
+static void ( *BufferHook )( int event, int buffer );
+
+FX_ENTRY void FX_CALL setConfigBufferHook(void (*buffer_hook)(int event, int buffer))
+{
+    BufferHook = buffer_hook;
+}
+
+void SelectDrawBuffer( GrBuffer_t buffer )
+{
+    if ( BufferHook )
+    {
+        BufferHook( WRAPPER_BUFFER_DRAW, (int)buffer );
+        glDrawBuffer( GL_BACK );
+        return;
+    }
+    glDrawBuffer( buffer == GR_BUFFER_BACKBUFFER ? GL_BACK : GL_FRONT );
+}
+
+void SelectReadBuffer( GrBuffer_t buffer )
+{
+    if ( BufferHook )
+    {
+        BufferHook( WRAPPER_BUFFER_READ, (int)buffer );
+        glReadBuffer( GL_BACK );
+        return;
+    }
+    glReadBuffer( buffer == GR_BUFFER_BACKBUFFER ? GL_BACK : GL_FRONT );
+}
+
+/* In grBufferSwap once the frame is complete, before the present hook draws over it: an embedding keeping the front buffer
+ * copies the frame into it. */
+void AnnounceBufferSwap( void )
+{
+    if ( BufferHook )
+    {
+        BufferHook( WRAPPER_BUFFER_SWAP, (int)GR_BUFFER_BACKBUFFER );
+    }
+}
+
 bool ClearAndGenerateLogFile( void )
 {
     FILE    * GlideFile;

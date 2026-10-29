@@ -101,3 +101,4 @@ _setConfigWindow@12 = setConfigWindow
 _setConfigWindowOffset@16 = setConfigWindowOffset
 _setConfigPresentHook@4 = setConfigPresentHook
 _setConfigMessages@4 = setConfigMessages
+_setConfigBufferHook@4 = setConfigBufferHook

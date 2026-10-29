@@ -359,6 +359,10 @@ void AllocateFrameBuffers( void );
 void GetOptions( void );
 void InitMainVariables( void );
 
+void SelectDrawBuffer( GrBuffer_t buffer );
+void SelectReadBuffer( GrBuffer_t buffer );
+void AnnounceBufferSwap( void );
+
 void annotate_last(void);
 void annotate_stat(void);
 #endif
